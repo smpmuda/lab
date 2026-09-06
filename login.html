@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Masuk — Jurnal Mengajar</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #0f1f3d;
+    --navy2: #1a3260;
+    --blue: #2563eb;
+    --sky: #e8f0fe;
+    --red: #dc2626;
+    --red-l: #fee2e2;
+    --gray-50: #f8fafc;
+    --gray-200: #e2e8f0;
+    --gray-400: #94a3b8;
+    --gray-600: #475569;
+    --gray-800: #1e293b;
+  }
+
+  html, body {
+    height: 100%;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(160deg, var(--navy) 0%, var(--navy2) 55%, #1e3a6e 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .card {
+    background: white;
+    border-radius: 16px;
+    padding: 36px 30px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35);
+  }
+
+  .logo {
+    width: 52px;
+    height: 52px;
+    background: var(--navy);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    color: white;
+    font-size: 20px;
+    margin: 0 auto 18px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 19px;
+    font-weight: 800;
+    color: var(--navy);
+    margin-bottom: 4px;
+  }
+
+  .sub {
+    text-align: center;
+    font-size: 13px;
+    color: var(--gray-400);
+    margin-bottom: 28px;
+  }
+
+  .field {
+    margin-bottom: 16px;
+  }
+
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gray-600);
+    margin-bottom: 6px;
+  }
+
+  input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid var(--gray-200);
+    border-radius: 8px;
+    font-size: 15px;
+    color: var(--gray-800);
+    transition: border-color .15s;
+    font-family: inherit;
+  }
+  input:focus {
+    outline: none;
+    border-color: var(--blue);
+  }
+
+  .btn {
+    width: 100%;
+    background: var(--blue);
+    color: white;
+    border: none;
+    padding: 13px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 6px;
+    transition: opacity .15s, transform .1s;
+  }
+  .btn:hover { opacity: .9; }
+  .btn:active { transform: scale(.98); }
+  .btn:disabled { opacity: .6; cursor: default; }
+
+  .error {
+    background: var(--red-l);
+    color: var(--red);
+    font-size: 13px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    display: none;
+    font-weight: 600;
+  }
+  .error.show { display: block; }
+
+  .footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 12px;
+    color: var(--gray-400);
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo">M²</div>
+  <h1 id="appName">Jurnal Mengajar</h1>
+  <div class="sub" id="schoolName">Memuat...</div>
+
+  <div class="error" id="errorBox"></div>
+
+  <form id="loginForm">
+    <div class="field">
+      <label for="username">Username</label>
+      <input type="text" id="username" autocomplete="username" required autofocus>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="btn" id="btnSubmit">Masuk</button>
+  </form>
+
+  <div class="footer">SMP Muhammadiyah 2 Cilacap</div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/auth.js"></script>
+<script>
+  // Sudah login? langsung ke app
+  if (Auth.getToken()) {
+    window.location.href = 'app.html';
+  }
+
+  // Muat nama sekolah dari config publik
+  API.call('getConfig', {}, 'GET', false)
+    .then(function(res) {
+      if (res.ok) {
+        document.getElementById('schoolName').textContent = res.data.nama_sekolah;
+        document.getElementById('appName').textContent = res.data.nama_aplikasi;
+        document.title = 'Masuk — ' + res.data.nama_aplikasi;
+      }
+    })
+    .catch(function() {
+      document.getElementById('schoolName').textContent = 'SMP Muhammadiyah 2 Cilacap';
+    });
+
+  var form = document.getElementById('loginForm');
+  var btn = document.getElementById('btnSubmit');
+  var errorBox = document.getElementById('errorBox');
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var username = document.getElementById('username').value.trim();
+    var password = document.getElementById('password').value;
+
+    errorBox.classList.remove('show');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Masuk...';
+
+    API.call('login', { username: username, password: password }, 'POST', false)
+      .then(function(res) {
+        if (!res.ok) {
+          throw new Error(res.error || 'Login gagal');
+        }
+        Auth.saveSession(res.data);
+        window.location.href = 'app.html';
+      })
+      .catch(function(e) {
+        errorBox.textContent = e.message || 'Terjadi kesalahan. Coba lagi.';
+        errorBox.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Masuk';
+      });
+  });
+</script>
+</body>
+</html>
