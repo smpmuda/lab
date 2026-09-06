@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jurnal Mengajar — SMP Muhammadiyah 2 Cilacap</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:    #0f1f3d;
+      --navy2:   #1a3260;
+      --blue:    #2563eb;
+      --sky:     #e8f0fe;
+      --green:   #16a34a;
+      --green-l: #dcfce7;
+      --amber:   #d97706;
+      --amber-l: #fef3c7;
+      --red:     #dc2626;
+      --red-l:   #fee2e2;
+      --white:   #ffffff;
+      --gray-50: #f8fafc;
+      --gray-100:#f1f5f9;
+      --gray-200:#e2e8f0;
+      --gray-400:#94a3b8;
+      --gray-600:#475569;
+      --gray-800:#1e293b;
+      --radius:  8px;
+      --shadow:  0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08);
+      --shadow-md: 0 4px 16px rgba(0,0,0,.1);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--gray-50);
+      color: var(--gray-800);
+      line-height: 1.6;
+      font-size: 15px;
+    }
+
+    /* ── TOPBAR ── */
+    .topbar {
+      background: var(--navy);
+      color: white;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    }
+
+    .topbar-logo {
+      width: 32px;
+      height: 32px;
+      background: white;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: var(--navy);
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .topbar-name {
+      font-weight: 600;
+      font-size: 14px;
+      flex: 1;
+    }
+
+    .topbar-sub {
+      color: rgba(255,255,255,.55);
+      font-size: 12px;
+    }
+
+    .topbar-login {
+      background: var(--blue);
+      color: white;
+      border: none;
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity .15s;
+    }
+    .topbar-login:hover { opacity: .85; }
+
+    /* ── HERO ── */
+    .hero {
+      background: linear-gradient(160deg, var(--navy) 0%, var(--navy2) 60%, #1e3a6e 100%);
+      color: white;
+      padding: 64px 24px 56px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+
+    .hero-eyebrow {
+      display: inline-block;
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.2);
+      color: rgba(255,255,255,.85);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      padding: 5px 14px;
+      border-radius: 20px;
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      font-size: clamp(26px, 5vw, 42px);
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 16px;
+      max-width: 640px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .hero p {
+      color: rgba(255,255,255,.7);
+      font-size: 16px;
+      max-width: 480px;
+      margin: 0 auto 36px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      background: var(--blue);
+      color: white;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 15px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 4px 12px rgba(37,99,235,.4);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(37,99,235,.45); }
+
+    .btn-secondary {
+      background: rgba(255,255,255,.1);
+      color: white;
+      border: 1px solid rgba(255,255,255,.25);
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 15px;
+      text-decoration: none;
+      transition: background .15s;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,.18); }
+
+    /* ── STATS BAR ── */
+    .stats {
+      background: white;
+      border-bottom: 1px solid var(--gray-200);
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0;
+    }
+
+    .stat {
+      padding: 20px 32px;
+      text-align: center;
+      border-right: 1px solid var(--gray-200);
+    }
+    .stat:last-child { border-right: none; }
+
+    .stat-num {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--navy);
+      display: block;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--gray-400);
+      margin-top: 2px;
+    }
+
+    /* ── SECTION ── */
+    .section {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 56px 24px;
+    }
+
+    .section-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--navy);
+      margin-bottom: 8px;
+    }
+
+    .section-sub {
+      color: var(--gray-600);
+      margin-bottom: 36px;
+      font-size: 15px;
+    }
+
+    /* ── ROLE CARDS ── */
+    .role-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .role-card {
+      background: white;
+      border: 1px solid var(--gray-200);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .role-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      margin-bottom: 14px;
+    }
+    .role-icon.blue   { background: var(--sky); }
+    .role-icon.green  { background: var(--green-l); }
+    .role-icon.amber  { background: var(--amber-l); }
+
+    .role-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .role-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      letter-spacing: .04em;
+    }
+    .badge-blue  { background: var(--sky); color: var(--blue); }
+    .badge-green { background: var(--green-l); color: var(--green); }
+    .badge-amber { background: var(--amber-l); color: var(--amber); }
+
+    .role-list {
+      list-style: none;
+      font-size: 13px;
+      color: var(--gray-600);
+    }
+    .role-list li {
+      padding: 5px 0;
+      border-bottom: 1px solid var(--gray-100);
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .role-list li:last-child { border-bottom: none; }
+    .role-list li::before {
+      content: '↳';
+      color: var(--gray-400);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ── ALUR CARDS ── */
+    .flow-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      counter-reset: flow;
+    }
+
+    .flow-card {
+      background: white;
+      border: 1px solid var(--gray-200);
+      border-radius: 10px;
+      padding: 20px;
+      position: relative;
+      box-shadow: var(--shadow);
+      counter-increment: flow;
+    }
+
+    .flow-card::before {
+      content: counter(flow);
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 24px;
+      height: 24px;
+      background: var(--navy);
+      color: white;
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .flow-step {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--blue);
+      letter-spacing: .06em;
+      margin-bottom: 8px;
+    }
+
+    .flow-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .flow-desc {
+      font-size: 12px;
+      color: var(--gray-600);
+      line-height: 1.5;
+    }
+
+    /* ── ARSITEKTUR ── */
+    .arch-box {
+      background: white;
+      border: 1px solid var(--gray-200);
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .arch-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .arch-node {
+      flex: 1;
+      padding: 14px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .arch-node.dark  { background: var(--navy); color: white; }
+    .arch-node.mid   { background: var(--sky); color: var(--navy); }
+    .arch-node.light { background: var(--gray-100); color: var(--gray-800); }
+
+    .arch-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--gray-400);
+      margin-bottom: 4px;
+    }
+
+    .arch-arrow {
+      text-align: center;
+      color: var(--gray-400);
+      font-size: 18px;
+      padding: 4px 0;
+    }
+
+    .arch-desc {
+      font-size: 12px;
+      color: var(--gray-600);
+      margin-top: 4px;
+    }
+
+    /* ── STATUS BADGE DEMO ── */
+    .demo-card {
+      background: white;
+      border: 1px solid var(--gray-200);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+    }
+
+    .demo-header {
+      background: var(--navy);
+      color: white;
+      padding: 14px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .demo-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.3);
+    }
+    .demo-dot.red    { background: #f87171; }
+    .demo-dot.yellow { background: #fbbf24; }
+    .demo-dot.green  { background: #34d399; }
+
+    .demo-body { padding: 20px; }
+
+    .demo-date {
+      font-size: 12px;
+      color: var(--gray-400);
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+
+    .jadwal-item {
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+
+    .jadwal-top {
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .jadwal-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-done { background: var(--green); }
+    .status-todo { background: var(--gray-300, #d1d5db); }
+
+    .jadwal-info { flex: 1; }
+    .jadwal-mapel { font-size: 14px; font-weight: 700; color: var(--navy); }
+    .jadwal-meta  { font-size: 12px; color: var(--gray-400); margin-top: 2px; }
+
+    .jadwal-tag {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .tag-done { background: var(--green-l); color: var(--green); }
+    .tag-todo { background: var(--gray-100); color: var(--gray-600); }
+
+    .jadwal-preview {
+      background: var(--gray-50);
+      border-top: 1px solid var(--gray-200);
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--gray-600);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .attendance-pill {
+      display: inline-flex;
+      gap: 6px;
+    }
+    .pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+    .pill-g { background: var(--green-l); color: var(--green); }
+    .pill-s { background: var(--amber-l); color: var(--amber); }
+    .pill-a { background: var(--red-l); color: var(--red); }
+
+    /* ── SHEET LIST ── */
+    .sheet-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+    }
+
+    .sheet-item {
+      background: white;
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: var(--shadow);
+    }
+
+    .sheet-num {
+      background: var(--navy);
+      color: white;
+      font-size: 10px;
+      font-weight: 800;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .sheet-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    .sheet-desc {
+      font-size: 11px;
+      color: var(--gray-400);
+      margin-top: 2px;
+    }
+
+    /* ── DIVIDER ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--gray-200);
+    }
+
+    /* ── FOOTER ── */
+    .footer {
+      background: var(--navy);
+      color: rgba(255,255,255,.5);
+      text-align: center;
+      padding: 28px 24px;
+      font-size: 13px;
+    }
+    .footer strong { color: rgba(255,255,255,.9); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      .stat { padding: 16px 20px; }
+      .stat-num { font-size: 18px; }
+      .section { padding: 40px 16px; }
+      .role-grid { grid-template-columns: 1fr; }
+      .flow-grid { grid-template-columns: 1fr; }
+      .topbar-sub { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<nav class="topbar">
+  <div class="topbar-logo">M²</div>
+  <div>
+    <div class="topbar-name">Jurnal Mengajar</div>
+    <div class="topbar-sub">SMP Muhammadiyah 2 Cilacap</div>
+  </div>
+  <a href="login.html" class="topbar-login">Masuk →</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-eyebrow">Sistem Jurnal Mengajar Digital</div>
+  <h1>Catat KBM dengan Cepat,<br>Pantau Kelas dengan Mudah</h1>
+  <p>Guru mengisi jurnal dari HP. Wali kelas memantau kehadiran real-time. Admin kelola data dari satu tempat.</p>
+  <div class="hero-actions">
+    <a href="login.html" class="btn-primary">
+      <span>Masuk ke Aplikasi</span>
+      <span>→</span>
+    </a>
+    <a href="Master_Specification.md" class="btn-secondary">Baca Spesifikasi</a>
+  </div>
+</section>
+
+<!-- STATS BAR -->
+<div class="stats">
+  <div class="stat">
+    <span class="stat-num">3</span>
+    <div class="stat-label">Role Pengguna</div>
+  </div>
+  <div class="stat">
+    <span class="stat-num">13</span>
+    <div class="stat-label">Tabel Database</div>
+  </div>
+  <div class="stat">
+    <span class="stat-num">100%</span>
+    <div class="stat-label">Berbasis Google</div>
+  </div>
+  <div class="stat">
+    <span class="stat-num">0</span>
+    <div class="stat-label">Biaya Server</div>
+  </div>
+</div>
+
+<!-- ROLE SECTION -->
+<div class="section">
+  <div class="section-title">Tiga Pengguna, Tiga Kebutuhan</div>
+  <div class="section-sub">Setiap role punya tampilan dan akses yang sesuai kebutuhannya.</div>
+
+  <div class="role-grid">
+    <!-- Admin -->
+    <div class="role-card">
+      <div class="role-icon blue">⚙️</div>
+      <div class="role-title">Admin / Kepala Sekolah</div>
+      <div><span class="role-badge badge-blue">ADMIN</span></div>
+      <ul class="role-list">
+        <li>Kelola data guru, kelas, siswa</li>
+        <li>Atur jadwal pelajaran per hari</li>
+        <li>Lihat semua jurnal semua kelas</li>
+        <li>Konfigurasi jam & nama sekolah</li>
+        <li>Pantau log aktivitas sistem</li>
+        <li>Kelola akun pengguna</li>
+      </ul>
+    </div>
+
+    <!-- Guru -->
+    <div class="role-card">
+      <div class="role-icon green">📝</div>
+      <div class="role-title">Guru</div>
+      <div><span class="role-badge badge-green">GURU</span></div>
+      <ul class="role-list">
+        <li>Lihat jadwal hari ini langsung</li>
+        <li>Isi jurnal dari HP dalam 1 menit</li>
+        <li>Pilih jam (bisa lebih dari 1)</li>
+        <li>Tandai kehadiran siswa per nama</li>
+        <li>Edit jurnal (sesuai batas waktu)</li>
+        <li>Riwayat jurnal per bulan</li>
+      </ul>
+    </div>
+
+    <!-- Wali Kelas -->
+    <div class="role-card">
+      <div class="role-icon amber">🏫</div>
+      <div class="role-title">Wali Kelas</div>
+      <div><span class="role-badge badge-amber">WALI KELAS</span></div>
+      <ul class="role-list">
+        <li>Pantau jurnal kelas yang dipegang</li>
+        <li>Pilih tanggal untuk lihat jurnal lama</li>
+        <li>Lihat kehadiran per mata pelajaran</li>
+        <li>Lihat daftar siswa tidak hadir</li>
+        <li>Semua guru, semua mapel, satu hari</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- PREVIEW DEMO -->
+<div class="section">
+  <div class="section-title">Tampilan Dashboard Guru</div>
+  <div class="section-sub">Guru langsung tahu jadwal hari ini dan mana yang sudah diisi.</div>
+
+  <div class="demo-card">
+    <div class="demo-header">
+      <div class="demo-dot red"></div>
+      <div class="demo-dot yellow"></div>
+      <div class="demo-dot green"></div>
+      <span style="margin-left:6px">Jurnal Mengajar — Senin, 9 September 2026</span>
+    </div>
+    <div class="demo-body">
+      <div class="demo-date">📅 Jadwal Mengajar Hari Ini — Pak Budi Santoso</div>
+
+      <!-- item 1 -->
+      <div class="jadwal-item">
+        <div class="jadwal-top">
+          <div class="jadwal-status status-done"></div>
+          <div class="jadwal-info">
+            <div class="jadwal-mapel">Informatika</div>
+            <div class="jadwal-meta">Kelas 7A &nbsp;·&nbsp; Jam 1 – 2</div>
+          </div>
+          <span class="jadwal-tag tag-done">✓ Sudah diisi</span>
+        </div>
+        <div class="jadwal-preview">
+          <span>📋</span>
+          <span>Algoritma dan flowchart dasar</span>
+          <span style="margin-left:auto" class="attendance-pill">
+            <span class="pill pill-g">28 Hadir</span>
+            <span class="pill pill-s">1 Sakit</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- item 2 -->
+      <div class="jadwal-item">
+        <div class="jadwal-top">
+          <div class="jadwal-status status-done"></div>
+          <div class="jadwal-info">
+            <div class="jadwal-mapel">Informatika</div>
+            <div class="jadwal-meta">Kelas 8B &nbsp;·&nbsp; Jam 4 – 5</div>
+          </div>
+          <span class="jadwal-tag tag-done">✓ Sudah diisi</span>
+        </div>
+        <div class="jadwal-preview">
+          <span>📋</span>
+          <span>Pengenalan HTML dan struktur tag</span>
+          <span style="margin-left:auto" class="attendance-pill">
+            <span class="pill pill-g">30 Hadir</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- item 3 -->
+      <div class="jadwal-item" style="border-color: #f59e0b44; background:#fffbf0">
+        <div class="jadwal-top">
+          <div class="jadwal-status status-todo"></div>
+          <div class="jadwal-info">
+            <div class="jadwal-mapel">Informatika</div>
+            <div class="jadwal-meta">Kelas 9A &nbsp;·&nbsp; Jam 7</div>
+          </div>
+          <span class="jadwal-tag tag-todo">Belum diisi</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ALUR GURU -->
+<div class="section">
+  <div class="section-title">Isi Jurnal dalam 3 Langkah</div>
+  <div class="section-sub">Dirancang untuk dipakai di dalam kelas, dari HP, tanpa ribet.</div>
+
+  <div class="flow-grid">
+    <div class="flow-card">
+      <div class="flow-step">LANGKAH</div>
+      <div class="flow-title">Buka Dashboard</div>
+      <div class="flow-desc">Login, jadwal hari ini langsung muncul. Tidak perlu cari-cari menu.</div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-step">LANGKAH</div>
+      <div class="flow-title">Pilih Kelas & Jam</div>
+      <div class="flow-desc">Klik blok jadwal. Pilih jam yang berlangsung (bisa lebih dari 1).</div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-step">LANGKAH</div>
+      <div class="flow-title">Isi Kegiatan</div>
+      <div class="flow-desc">Tulis ringkasan kegiatan. Tap nama siswa yang tidak hadir.</div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-step">LANGKAH</div>
+      <div class="flow-title">Simpan</div>
+      <div class="flow-desc">Klik Simpan. Jurnal tersimpan ke Spreadsheet. Dashboard langsung update.</div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ARSITEKTUR -->
+<div class="section">
+  <div class="section-title">Arsitektur Sistem</div>
+  <div class="section-sub">Seluruh data di Google Spreadsheet. Tidak ada server yang perlu dikelola.</div>
+
+  <div class="arch-box">
+    <div class="arch-label">Pengguna (HP/Laptop)</div>
+    <div class="arch-row">
+      <div class="arch-node dark">GitHub Pages — Aplikasi Web</div>
+    </div>
+    <div class="arch-arrow">↓ HTTP Request</div>
+    <div class="arch-row">
+      <div class="arch-node mid">Google Apps Script — API Backend</div>
+    </div>
+    <div class="arch-arrow">↓ Read / Write</div>
+    <div class="arch-row">
+      <div class="arch-node light">Google Spreadsheet — Database (13 Sheet)</div>
+    </div>
+    <div class="arch-desc" style="margin-top:12px; font-size:12px; color:var(--gray-400)">
+      ✦ Tidak perlu VPS &nbsp;·&nbsp; ✦ Backup otomatis Google &nbsp;·&nbsp; ✦ Bisa digunakan sekolah lain tanpa coding ulang
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- DATABASE STRUCTURE -->
+<div class="section">
+  <div class="section-title">13 Tabel Database</div>
+  <div class="section-sub">Setiap sheet punya fungsi yang jelas dan tidak tumpang tindih.</div>
+
+  <div class="sheet-grid">
+    <div class="sheet-item">
+      <div class="sheet-num">01</div>
+      <div><div class="sheet-name">CONFIG</div><div class="sheet-desc">Konfigurasi sekolah</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">02</div>
+      <div><div class="sheet-name">TAHUN_AJARAN</div><div class="sheet-desc">Periode akademik</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">03</div>
+      <div><div class="sheet-name">USER</div><div class="sheet-desc">Akun & autentikasi</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">04</div>
+      <div><div class="sheet-name">GURU</div><div class="sheet-desc">Data guru</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">05</div>
+      <div><div class="sheet-name">KELAS</div><div class="sheet-desc">Rombongan belajar</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">06</div>
+      <div><div class="sheet-name">SISWA</div><div class="sheet-desc">Daftar siswa per kelas</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">07</div>
+      <div><div class="sheet-name">MAPEL</div><div class="sheet-desc">Mata pelajaran</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">08</div>
+      <div><div class="sheet-name">JAM</div><div class="sheet-desc">Jam pelajaran + waktu</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">09</div>
+      <div><div class="sheet-name">JADWAL</div><div class="sheet-desc">Guru + kelas + hari + jam</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">10</div>
+      <div><div class="sheet-name">JURNAL</div><div class="sheet-desc">Isi jurnal mengajar</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">11</div>
+      <div><div class="sheet-name">JURNAL_JAM</div><div class="sheet-desc">Relasi jurnal ↔ jam</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">12</div>
+      <div><div class="sheet-name">KEHADIRAN</div><div class="sheet-desc">Status hadir per siswa</div></div>
+    </div>
+    <div class="sheet-item">
+      <div class="sheet-num">13</div>
+      <div><div class="sheet-name">LOG</div><div class="sheet-desc">Riwayat aktivitas</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <strong>Jurnal Mengajar</strong> — SMP Muhammadiyah 2 Cilacap<br>
+  <span style="font-size:12px; margin-top:6px; display:block">
+    Dibangun di atas GitHub Pages · Google Apps Script · Google Spreadsheet
+  </span>
+</footer>
+
+</body>
+</html>
