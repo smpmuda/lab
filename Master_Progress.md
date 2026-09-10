@@ -1,6 +1,6 @@
 # Master Progress — Jurnal Mengajar
 **SMP Muhammadiyah 2 Cilacap**
-Terakhir diperbarui: 2026-09-04
+Terakhir diperbarui: 2026-09-08
 
 ---
 
@@ -224,17 +224,166 @@ Terakhir diperbarui: 2026-09-04
 - [x] `HANDOVER.md` dibuat — dokumen transisi lengkap untuk melanjutkan proyek di chat baru
 - **Status backend: SELESAI DAN TERUJI.** Langkah selanjutnya (A5-A8: cleanup final, setup trigger, deploy Web App, test URL browser) — **PERLU DIKONFIRMASI** apakah sudah dikerjakan user atau belum sebelum lanjut ke Bagian B (frontend)
 
-### 4.8 BUG KEENAM — ditemukan SETELAH deploy Web App (2026-09-05)
-- [x] **BUG DITEMUKAN**: setelah deploy sukses (A7), test manual `?action=ping` dari browser mengembalikan `401 Token tidak valid` — padahal `ping` seharusnya endpoint publik seperti `getConfig` (yang sudah dikonfirmasi sukses). Ternyata di `Code.gs`, handler `ping` diletakkan SETELAH blok pengecekan token (baris ~80), bukan sejajar dengan `login`/`getConfig` di kelompok endpoint publik (baris ~38). Akibatnya endpoint health-check yang seharusnya paling sederhana justru selalu gagal tanpa token.
-  - **Perbaikan**: `ping` dipindah ke kelompok endpoint publik, sejajar `login` dan `getConfig`.
-  - **Tambahan pencegahan regresi**: fungsi baru `testEndpointPublik()` di `TestSuite.gs` — secara eksplisit mensimulasikan request TANPA token ke `ping`, `getConfig` (harus sukses), action kosong (harus dapat pesan jelas bukan "token invalid"), dan `getGuru` (harus ditolak 401 karena butuh token). Dipanggil di awal `runFullTest()` sebelum test lain.
-  - **Pelajaran**: `runFullTest()` sebelumnya TIDAK PERNAH menguji endpoint publik lewat jalur HTTP asli tanpa token — semua test kemarin memanggil fungsi `actionXxx()` secara langsung dengan session yang sudah divalidasi, sehingga bug urutan routing seperti ini lolos dari testing internal dan baru ketahuan saat akses manual dari browser sungguhan.
-- [ ] User perlu update `Code.gs` di Apps Script editor, **Deploy → Manage deployments → edit (pensil) → New Version → Deploy** (supaya URL Web App TIDAK BERUBAH), lalu jalankan `runFullTest()` sekali lagi untuk verifikasi test regresi baru ini lolos
-- [ ] Setelah itu, test ulang `?action=ping` dari browser — harus sukses tanpa token
+### 4.8 Bug ke-6 ditemukan & diperbaiki (2026-09-05, pasca deploy pertama)
+- [x] **BUG**: `?action=ping` dari browser mengembalikan 401 "Token tidak valid" — seharusnya endpoint publik tanpa token, sama seperti `getConfig`
+- [x] **Root cause**: di `Code.gs`, urutan pengecekan action `ping` diletakkan SETELAH blok validasi token, bukan di kelompok endpoint publik (`login`, `getConfig`) di awal fungsi `handleRequest`
+- [x] **Fix**: pindahkan pengecekan `action === 'ping'` ke atas, sejajar dengan `login` dan `getConfig`, sebelum blok "wajib token"
+- [x] User konfirmasi: `ping` sudah sukses tanpa token setelah fix — **deploy Web App (A7) dan test browser (A8) SELESAI dan BERHASIL**
+
+---
+
+## FASE 5 — Rombakan Besar Performa & UI (SELESAI — menunggu deploy & uji manual user)
+
+**Konteks:** setelah deploy sukses dan diuji manual, user memberi daftar perbaikan besar mencakup UI (bottom nav, form grid, pagination di banyak tempat), fitur baru (info wali kelas, jadwal kelas publik, admin lihat jadwal per guru, filter admin), dan **PERFORMA sebagai prioritas utama** — target 40 guru pakai bersamaan, 30 kelas, ~1000 siswa.
+
+### 5.1 Analisis akar masalah performa (SELESAI)
+- [x] Ditemukan: `readSheet()` sebelumnya SELALU `getDataRange().getValues()` full-scan tanpa cache sama sekali, dipanggil berkali-kali per request (N+1 pattern) — ini akar masalah lambat
+- [x] Ditemukan: `nextId()` lama pakai `getLastRow()` — rawan ID bentrok kalau ada baris terhapus di tengah (misal oleh `cleanupTestData`)
+- [x] Ditemukan: kehadiran menyimpan SEMUA siswa (termasuk yang hadir) — untuk kelas 33 siswa, 1 jurnal = 33 baris tulis padahal biasanya cuma 1-2 yang tidak hadir → pemborosan tulis besar-besaran di skala 1000 siswa
+
+### 5.2 Perbaikan BACKEND — Utils.gs (SELESAI, sudah di-package)
+- [x] Cache 2 lapis: in-memory per eksekusi (`_execCache`) + `CacheService` lintas eksekusi (`SHEET_CACHE_TTL`) untuk sheet master data (CONFIG, TAHUN_AJARAN, GURU, KELAS, SISWA, MAPEL, JAM: 300 detik; USER: 60 detik; JADWAL: 180 detik)
+- [x] Sheet transaksional (JURNAL, JURNAL_JAM, KEHADIRAN, LOG) SENGAJA TIDAK di-cache — harus selalu real-time
+- [x] `invalidateCache(sheetName)` — wajib dipanggil setiap tulis, supaya request berikutnya tidak baca data basi
+- [x] `appendToSheet()` dan `appendManyToSheet()` (baru — batch write pakai `setValues()`, jauh lebih cepat dari `appendRow()` berulang) otomatis invalidasi cache
+- [x] `updateRowById()` dan `deleteRowsByIds()` (baru) otomatis invalidasi cache
+- [x] `nextId()` diperbaiki — sekarang cari ID number TERBESAR sungguhan dari data (bukan `getLastRow()`), aman meski ada baris terhapus
+- [x] `indexBy(rows, key)` dan `groupBy(rows, key)` (baru) — bangun Map sekali untuk lookup O(1), menggantikan `.find()`/`.filter()` berulang dalam loop (pola N+1 di kode lama)
+- [x] `paginate(items, page, pageSize)` (baru) — helper generik potong array sesuai halaman, dipakai di semua endpoint list
+
+### 5.3 Perbaikan BACKEND — Jurnal.gs (SELESAI, sudah di-package)
+- [x] **PERUBAHAN SKEMA PENTING**: sheet `12_KEHADIRAN` sekarang HANYA menyimpan siswa yang TIDAK HADIR (SAKIT/IZIN/ALPA). Siswa hadir TIDAK ditulis sebagai baris sama sekali. Field `kehadiran` di request body TETAP bernama sama (kontrak API tidak berubah) tapi isinya sekarang HANYA yang tidak hadir
+- [x] Rekap kehadiran dihitung: `hadir = total_siswa_kelas - jumlah_baris_tidak_hadir`
+- [x] `actionCreateJurnal`: validasi NIS harus benar-benar siswa aktif di kelas tsb, status harus SAKIT/IZIN/ALPA (HADIR tidak lagi valid sebagai status tersimpan), pakai `appendManyToSheet` untuk batch insert ke `11_JURNAL_JAM` dan `12_KEHADIRAN` (bukan loop `appendRow`)
+- [x] `actionUpdateJurnal` + `_replaceKehadiran`: hapus baris lama pakai `deleteRowsByIds` (cache-aware), tulis baru pakai `appendManyToSheet`
+- [x] `actionGetJurnalSaya`: SEKARANG PAKAI PAGINATION — response berubah dari array langsung jadi `{ items, page, pageSize, totalItems, totalPages }`. Pagination dilakukan SEBELUM join data lain (kelas/mapel) demi efisiensi
+- [x] `actionGetDetailJurnal`: field response `kehadiran` diganti nama jadi `tidak_hadir` (lebih eksplisit), pakai `indexBy` untuk lookup siswa
+
+### 5.4 Perbaikan BACKEND — Data.gs (SELESAI, sudah di-package)
+- [x] `_jadwalGuru` (dipakai `getJadwalHariIni`/`getJadwalGuru`): SEKARANG MENAMPILKAN SEMUA JAM 1 SAMPAI MAX-HARI (bukan cuma yang ada jadwal) — jam kosong ditandai objek dengan `tidak_mengajar: true`, `nama_mapel: 'Tidak Mengajar'`. Pakai `indexBy`/`groupBy`, bukan `.find()` linear berulang
+- [x] `actionGetJadwalKelas`: tambah `nama_kelas` di response (untuk badge "Wali Kelas: 7B" di frontend), auto-detect `kelas_id` dari `session.kelas_wali` kalau tidak dikirim eksplisit, skema kehadiran baru (rekap dihitung dari tidak-hadir), pakai index
+- [x] `actionGetAllJurnal` (Admin): **PARAMETER TANGGAL SEKARANG WAJIB** (validasi format `yyyy-MM-dd`, kalau kosong ditolak) — sesuai permintaan "maksimal 1 hari per pencarian". Tambah filter `guru_id` dan `mapel_id` (sebelumnya sudah ada `kelas_id`). SEKARANG PAKAI PAGINATION sama seperti `getJurnalSaya`
+- [x] **ENDPOINT BARU** `actionGetJadwalPerGuru` (admin only): input `guru_id`, output jadwal mengajar guru tsb dikelompokkan per hari (SENIN-SABTU) — untuk fitur "admin pilih guru, lihat dia ngajar dimana saja"
+- [x] **ENDPOINT BARU** `actionGetJadwalKelasPublik`: mirip `getJadwalKelas` tapi TANPA data kehadiran/jurnal (hanya info jadwal: mapel, guru, jam) dan TIDAK dibatasi harus wali kelas — untuk fitur baru "menu Jadwal Kelas" yang bisa diakses guru/siapapun yang login
+- [x] `actionUpdateConfig`: tambah `invalidateCache('01_CONFIG')` eksplisit (sebelumnya cuma reset `_configCache` in-memory, cache CacheService tidak ikut ke-invalidate)
+- [x] `actionGetKelas`: pakai `indexBy` untuk cari wali kelas, bukan `.find()` linear
+
+### 5.5 Perbaikan BACKEND — Auth.gs (SELESAI, sudah di-package)
+- [x] Update `last_login` saat login SEKARANG TIDAK memicu `invalidateCache('03_USER')` — field ini non-kritis, sengaja dibiarkan pakai data cache lama supaya 40 guru login bersamaan pagi hari tidak saling invalidasi cache USER satu sama lain (perbaikan performa spesifik untuk skenario login serentak)
+
+### 5.6 Perbaikan BACKEND — Code.gs (SELESAI, sudah di-package)
+- [x] Daftarkan endpoint baru: `getJadwalKelasPublik`, `getJadwalPerGuru`
+- [x] `actionGetLog`: SEKARANG PAKAI PAGINATION (sebelumnya cuma slice 200 baris terakhir tanpa navigasi) — response `{ items, page, pageSize, totalItems, totalPages }`
+
+### 5.7 Perbaikan TestSuite.gs (SELESAI, sudah di-package)
+- [x] Section baru **"0.5 CACHE CORRECTNESS"** (`testCacheCorrectness`, dipanggil PALING AWAL di `runFullTest`): validasi bahwa `SHEET_CACHE_TTL` terisi benar, sheet transaksional tidak ke-cache, `invalidateCache()` benar-benar bikin `readSheet()` re-read dari sheet (test ubah `VERSI_APP` manual → invalidate → baca ulang harus dapat nilai baru → dikembalikan ke semula), `appendManyToSheet` otomatis invalidasi cache
+- [x] Section baru **"6.5 PAGINATION & FILTER ADMIN"** (`testPaginationDanFilter`): validasi `getJurnalSaya` return struktur pagination, `getAllJurnal` TANPA tanggal DITOLAK, `getAllJurnal` DENGAN tanggal berhasil + pagination, `getLog` return struktur pagination, `getJadwalKelasPublik` bisa diakses guru biasa, `getJadwalPerGuru` berhasil untuk admin DAN ditolak untuk guru biasa
+- [x] `testCreateDanUpdateJurnal` diperkaya: validasi eksplisit skema kehadiran baru — kirim 1 siswa SAKIT, cek `rekap.total` sesuai jumlah siswa kelas, `rekap.sakit === 1`, `rekap.hadir === total - 1` (dihitung otomatis, bukan disimpan), `tidak_hadir` array HANYA berisi 1 item (bukan semua siswa), DAN validasi LANGSUNG ke sheet `12_KEHADIRAN` bahwa jumlah baris tersimpan = jumlah yang dikirim (bukti nyata "database ringan" — kalau bug, baris akan sebanyak total siswa kelas)
+- [x] `cleanupTestData()` diperbaiki: sekarang eksplisit `invalidateCache('10_JURNAL')`, `invalidateCache('11_JURNAL_JAM')`, `invalidateCache('12_KEHADIRAN')` di akhir — sebelumnya hapus baris manual via `deleteRow()` tanpa invalidasi, jadi data basi bisa nyangkut di cache
+- [x] Urutan pemanggilan di `runFullTest()`: `testCacheCorrectness()` → `testStrukturSheet()` → `testEndpointPublik()` → `testConfig()` → `testLoginSemuaRole()` → `testGetMasterData()` → `testJadwalDanKonflik()` → `testCreateDanUpdateJurnal()` → `testPaginationDanFilter()` → `testAksesKontrol()` → `testLogout()`
+- [x] **Router (Code.gs) — perubahan lanjutan (chat baru, 2026-09-08):** `getJadwalKelasPublik` dipindah ke grup endpoint PUBLIK (tanpa token) sesuai keputusan eksplisit user (menu "Jadwal Kelas" di homepage harus bisa diakses tanpa login). Ditambahkan endpoint publik baru `getKelasPublik` (daftar kelas versi minimal: kelas_id/nama_kelas/tingkat, TANPA nama wali kelas) khusus untuk dropdown di halaman publik — `getKelas` (versi lengkap) TIDAK diubah dan tetap butuh token untuk pemakaian di dalam app.
+- **STATUS: Backend (5 file .gs + TestSuite.gs) sudah dijalankan `runFullTest()` oleh user dan LULUS untuk versi sebelum perubahan router di atas.** Perubahan router (pindah `getJadwalKelasPublik` + endpoint baru `getKelasPublik`) BELUM diuji ulang — user perlu jalankan `runFullTest()` sekali lagi setelah upload ulang ke Apps Script editor.
+
+### 5.8 Perbaikan FRONTEND — app.html (SELESAI)
+- [x] Bottom nav: padding dikurangi, item aktif dapat highlight pill (`background: var(--blue-l)`), lebih modern
+- [x] Bottom nav: z-index dinaikkan ke 70 (di atas `.topbar` z-index 50) supaya SELALU bisa diklik, termasuk saat menimpa area form
+- [x] Style baru `.pagination-bar`, `.page-btn`, `.page-info` — dipakai Jurnal Saya, Admin Jurnal, Admin Log
+- [x] Style baru `.wali-info-badge` — badge "👤 Wali Kelas: X" di halaman Jurnal Kelas
+- [x] Style baru `.form-grid-2` — grid 2 kolom (Kelas|Tanggal), otomatis jadi 1 kolom di layar <380px
+- [x] Style baru `.select-input` — dropdown filter admin & pilih kelas/guru/hari
+- [x] Style baru `.jadwal-card.kosong` (border dashed, background abu-abu) dan `.jadwal-mapel.muted` (italic, abu-abu) — kartu "Tidak Mengajar" kini visually beda dan TIDAK diberi event click
+- [x] Style baru `.form-bottom-space` (height 40px) — spacer wajib di akhir setiap `.form-box` supaya tombol Simpan/Edit tidak tertutup bottom nav
+
+### 5.9 Perbaikan FRONTEND — app.js (SELESAI — ditulis ulang total via bash heredoc, bukan create_file, untuk hindari bug "Field required")
+File `js/app.js` (1043 baris) sudah ditulis ulang total dan lolos `node --check` (syntax valid). Semua item berikut SUDAH ada:
+
+- [x] Bottom nav ringkas per role: GURU (Hari Ini, Jurnal Saya, Jadwal Kelas), WALI_KELAS (Jurnal Kelas, Jadwal Kelas), ADMIN (Beranda, Jurnal, Guru, Log)
+- [x] `viewDashboard`: render SEMUA jam dari `getJadwalHariIni`, kartu "Tidak Mengajar" (`tidak_mengajar:true`) muted & tidak bisa diklik (`bindJadwalCards` skip `.kosong`)
+- [x] `viewJurnalForm`: grid 2 kolom Kelas|Tanggal, Mapel full-width, jam diambil dari `getJam` (difilter `<= appConfig.jam_maks[blok.hari]`) sehingga guru bisa pilih lebih dari jam asal terjadwal. Kehadiran default HADIR (hijau), submit hanya kirim non-HADIR via `kumpulkanTidakHadir()`. `.form-bottom-space` ditambahkan di akhir form-box
+- [x] `viewJurnalDetail`/`viewJurnalEdit`: pakai `j.tidak_hadir` (bukan `j.kehadiran`), `.form-bottom-space` ditambahkan
+- [x] `viewJurnalSaya`: pagination penuh (`paginationHtml`/`bindPagination`, state `jurnalSayaPage`)
+- [x] `viewJurnalKelas`: badge "👤 Wali Kelas: [nama kelas]" dari `d.nama_kelas`
+- [x] **VIEW BARU** `viewJadwalKelasLihat` (route `jadwal-kelas-lihat`): dropdown kelas (dari `getKelas`) + dropdown hari, panggil `getJadwalKelasPublik`, render mapel+guru+jam tanpa kehadiran. Terdaftar di bottom nav GURU & WALI_KELAS
+- [x] **VIEW BARU** `viewAdminGuru`: dropdown guru (`getGuru`), panggil `getJadwalPerGuru`, render per hari SENIN–SABTU (hari tanpa jadwal ditandai kartu kosong muted)
+- [x] `viewAdminJurnal`: filter form (tanggal wajib default hari ini, dropdown guru & mapel), tombol "Cari", hasil dengan pagination
+- [x] `viewAdminLog`: pagination penuh
+- [x] Helper baru: `paginationHtml(pageInfo)`, `bindPagination(pageInfo, onNavigate)`, `hariIniIndo()`, `capitalizeHari(h)`
+
+### 5.10 Homepage (index.html) — SELESAI
+- [x] **Akar masalah tombol tak bisa diklik DITEMUKAN & DIPERBAIKI**: `.hero::before` (pattern dekoratif) memakai `position:absolute; inset:0` tanpa `pointer-events`/`z-index`. Secara default CSS stacking, elemen positioned (meski z-index:auto) dirender DI ATAS konten normal-flow di stacking context yang sama — sehingga pseudo-element dekoratif ini menutupi `.hero-actions` dan memblokir klik meski opacity-nya sangat rendah (0.03) dan terlihat seperti "hanya background". Fix: tambah `pointer-events: none` pada `.hero::before`
+- [x] Kurangi kepadatan info: section "13 Tabel Database" (grid detail 13 sheet) DIHAPUS — sudah terwakili ringkas di stats bar ("13 Tabel Database"). Bagian Arsitektur diringkas (baris "Bisa digunakan sekolah lain tanpa coding ulang" dihapus, cukup 3 poin inti)
+- [x] Menu/tautan "Jadwal Kelas" ditambahkan di hero-actions, mengarah ke halaman baru `jadwal-publik.html`
+- [x] **Keputusan user (dikonfirmasi):** akses "Jadwal Kelas" PUBLIK, tanpa login sama sekali. Dibuat halaman standalone `jadwal-publik.html` (tidak pakai `Auth.requireLogin()`/`app.js`, hanya `js/config.js` + script inline) yang panggil endpoint publik baru `getKelasPublik` + `getJadwalKelasPublik` langsung tanpa token
+
+### 5.11 Keputusan yang TIDAK BOLEH diubah dari permintaan terakhir user (eksplisit dikonfirmasi OK, jangan disentuh)
+- Data guru, kelas, siswa → tetap dikelola manual via Spreadsheet config (BUKAN via web admin)
+- Jadwal pelajaran → tetap manual via Spreadsheet (BUKAN via web admin)
+- Nama sekolah dan jam pelajaran → tetap via 01_CONFIG di Spreadsheet
+- Logout dan proteksi akses tanpa login → SUDAH OK, jangan diubah
+- Jadwal hari ini dan pilih tanggal (fungsi dasarnya) → SUDAH OK, jangan diubah — hanya PERLU DITAMBAHKAN tampilan jam kosong "Tidak Mengajar"
+
+### 5.12 Dokumentasi (SELESAI, atas permintaan eksplisit user)
+- [x] `apps-script/README.md` diupdate: endpoint baru (`getKelasPublik`, `getJadwalKelasPublik` [dipindah ke publik], `getJadwalPerGuru`), semua endpoint pagination ditandai `[PAGINATION]` dengan contoh bentuk response, section baru "Skema Kehadiran (Hanya-Tidak-Hadir)" dan "Performa & Caching"
+- [x] `Master_Specification.md` diupdate: skema `12_KEHADIRAN` (kolom `nis` bukan `siswa_id`, hanya simpan tidak-hadir), section 4 (Desain API) ditandai `[DIPERBARUI]` dengan catatan deviasi dari blueprint awal (bukan method PUT, password tidak di-hash, tidak ada endpoint manage* karena data master manual di Spreadsheet), endpoint baru & pagination didokumentasikan
 
 ---
 
 ## Catatan Harian
+
+### 2026-09-08 (lanjutan — implementasi arsitektur cache client-side, poin 9–13)
+Setelah dibahas dulu (lihat percakapan sebelumnya) dan disepakati user, diimplementasikan:
+
+**Backend:**
+- `Data.gs`: `actionGetConfig()` sekarang mengembalikan field baru `data_version` (integer, dari `configVal('DATA_VERSION', 0)`)
+- `Utils.gs`: fungsi baru `bumpDataVersion()` — menaikkan `DATA_VERSION` di sheet `01_CONFIG` (kolom dicari dinamis via header, bukan hardcode posisi), otomatis membuat barisnya kalau belum ada saat pertama kali dipanggil. Dibungkus try-catch total (dipanggil dari simple trigger, tidak boleh throw)
+- `Code.gs`: trigger sederhana `onEdit(e)` (nama fungsi reserved Google Sheets, otomatis aktif tanpa setup manual admin) — memanggil `bumpDataVersion()` HANYA kalau sheet yang diedit adalah `04_GURU`/`05_KELAS`/`06_SISWA`/`07_MAPEL`/`09_JADWAL` (bukan sheet transaksional)
+- `TestSuite.gs`: test baru `testDataVersionCache()` (section 2.5), didaftarkan di `runFullTest()` — panggil `bumpDataVersion()` langsung dan verifikasi angkanya naik 1, DAN `getConfig()` ikut mengembalikan versi terbaru. **Catatan: test ini tidak bisa mensimulasikan trigger `onEdit` itu sendiri** (event object `e` tidak bisa dipalsukan dari `runFullTest()`) — perilaku triggernya HARUS dicek manual (lihat Panduan_Deploy_dan_Uji.md C8.9)
+
+**Frontend:**
+- File baru `frontend/js/cache.js` — modul `DataCache` (get/set/clearAll/syncIfNeeded), pakai `localStorage`, SEMUA operasi dibungkus try-catch (gagal-aman total: localStorage nonaktif/penuh → cache selalu dianggap kosong, app tetap jalan normal tanpa cache)
+- `app.js`: fungsi baru `cachedApiCall(cacheKey, action, params)` — dipakai untuk `getGuru`, `getKelas`, `getMapel`, `getJam`, `getSiswa` (per kelas_id, key `siswa_<kelas_id>`), `getJadwalPerGuru` (per guru_id, key `jadwalGuru_<guru_id>`). **TIDAK dipakai** untuk `getJadwalHariIni`/`getJadwalKelas`/`getJadwalKelasPublik`/jurnal/kehadiran/log — semua itu mengandung status transaksional (`sudah_diisi`, konflik) yang harus selalu live
+- `init()`: setelah `getConfig` sukses, panggil `DataCache.syncIfNeeded(appConfig.data_version)` — kalau versi beda dari yang tersimpan di perangkat, seluruh cache lokal dihapus (refresh lazy per-view, bukan preload sekaligus)
+- Fungsi baru `forceSyncData()` — dipanggil tombol 🔄 baru di header (`app.html`, SEMUA role bisa pakai): hapus semua cache, ambil `data_version` terbaru, lalu render ulang halaman yang sedang dibuka
+- `app.html`: tombol `#btnSync` + CSS animasi spin saat proses sync + `<script src="js/cache.js">` ditambahkan SEBELUM `app.js`
+
+**Dokumentasi:**
+- `README.md`: section "Cache Client-Side (localStorage...)" baru di bawah "Performa & Caching", menjelaskan kenapa BUKAN file JSON di GitHub (repo publik → data siswa anak di bawah umur bisa diakses tanpa login kalau ditaruh di sana)
+- `Master_Specification.md`: section baru 4.7 "Arsitektur Cache Client-Side" (diagram alur, keputusan sadar yang harus dipertahankan), `01_CONFIG` didokumentasikan ada key otomatis `DATA_VERSION` (jangan diedit manual), section 5 (Struktur File GitHub) diperbarui total supaya sesuai kondisi nyata (sebelumnya masih blueprint lama yang tidak sesuai implementasi — repo `/lab`, file `dashboard.js`/`jurnal.js`/`kelas.js`/`admin.js` yang sebenarnya tidak pernah ada, karena semua digabung jadi satu `app.js`)
+
+**Keamanan yang SENGAJA dihindari** (sesuai diskusi arsitektur): TIDAK ADA data siswa/guru/kelas yang disimpan sebagai file JSON statis di repo GitHub manapun — repo `smpmuda/jurnal` bersifat publik (syarat GitHub Pages gratis), jadi cache HANYA boleh di `localStorage` per-perangkat pengguna yang sudah login, tidak pernah di tempat yang bisa diakses tanpa autentikasi.
+
+Semua file `.gs`, `app.js`, dan `cache.js` lolos `node --check` setelah perubahan ini.
+
+### 2026-09-08 (lanjutan — feedback hasil uji manual user, 8 poin perbaikan)
+Backend TIDAK ada perubahan sesi ini — semua sudah cukup (getAllJurnal sudah support filter kelas_id, getJurnalSaya sudah support filter bulan sejak awal, ternyata belum dipakai di frontend).
+
+Perbaikan frontend (`app.js`, `app.html`, `index.html`):
+1. **Bug "Kembali" ke login — DIPERBAIKI.** Akar masalah: tombol pakai `history.back()` (browser history), yang masih menyimpan `login.html` sebagai halaman sebelumnya karena redirect login→app pakai `location.href` (bukan `replace`). Solusi: dibuat sistem riwayat navigasi custom DI DALAM APP (`navStack`, fungsi `goBack()`) yang sama sekali tidak menyentuh browser history. Semua tombol "← Kembali"/"← Batal" sekarang pakai `goBack()`.
+2. Menu **Jadwal Kelas** kini juga ada di: bottom nav Admin (baru), menu Beranda Admin (baru), dan link cepat "🏫 Lihat Jadwal Kelas Lain" di Dashboard Guru & Jurnal Kelas Wali (sebelumnya cuma ada di bottom nav Guru/Wali, kurang kelihatan).
+3. **Admin — Jurnal**: ditambah filter Kelas (dropdown, dari `getKelas`) — backend sudah support `kelas_id` sejak awal, tinggal disambungkan di UI.
+4. **Admin — Jadwal Guru**: diubah total dari daftar panjang semua hari jadi TAB HARI (Senin–Jumat, hanya hari aktif sesuai `appConfig.jam_maks`). Data diambil SEKALI saat pilih guru (`adminGuruDataCache`), ganti tab hari HANYA render ulang dari cache — TIDAK ada API call tambahan.
+5. **Log Aktivitas — pagination ketutup bottom nav — DIPERBAIKI**: `body padding-bottom` dinaikkan 76px→100px, `.pagination-bar` diberi `margin-bottom:30px` tambahan.
+6. **Bottom nav diredesain** — lebih ringan/modern: hilangkan background pill tebal, ganti jadi indikator strip tipis di atas ikon aktif, kurangi shadow, kurangi padding, tambah `backdrop-filter blur`. Berlaku untuk SEMUA role.
+7. **Homepage**: tombol "Baca Spesifikasi" **dihapus total** (sebelumnya cuma diarahkan ke .md, sekarang dihapus sesuai permintaan).
+8. **Guru/Wali Kelas**: ditambah hint text di bawah date-bar ("Menampilkan data [tanggal]. Pilih tanggal lain di atas untuk melihat data pada tanggal tersebut.") — dipakai di Dashboard & Jurnal Kelas.
+9. **Jurnal Saya**: ditambah filter Bulan (dropdown Januari–Desember) — backend `getJurnalSaya` ternyata SUDAH support param `bulan` sejak awal (belum pernah disambungkan ke UI).
+10. **Wali Kelas**: ditambah panel ringkasan **"😷 Siswa Tidak Hadir Hari Ini"** di atas Jurnal Kelas — mengumpulkan semua siswa tidak hadir dari SELURUH mapel hari itu (bukan per-mapel satu-satu), tiap baris tampilkan nama + badge status per mapel (siswa bisa tidak hadir di lebih dari 1 mapel dengan status berbeda, jadi ditampilkan multi-tag).
+
+**Poin 9–13 di feedback user (arsitektur cache/static data/sinkronisasi) — SENGAJA BELUM diimplementasikan**, sesuai instruksi eksplisit user ("jangan langsung implementasi, bahas dulu pola arsitekturnya"). Dijawab terpisah sebagai diskusi arsitektur, bukan kode.
+
+Semua file `.gs` dan `app.js` lolos `node --check` setelah semua perubahan di atas.
+
+### 2026-09-08 (chat baru, lanjutan handoff)
+- Backend dikonfirmasi user: `runFullTest()` sudah dijalankan dan lulus untuk versi backend hasil rombakan performa (sebelum perubahan router sesi ini)
+- Keputusan Bagian K dikonfirmasi user: (1) menu "Jadwal Kelas" PUBLIK tanpa login, (2) tampilan kartu "Tidak Mengajar" bebas sesuai desain, (3) dokumentasi ikut diupdate
+- Router (Code.gs) diubah: `getJadwalKelasPublik` dipindah ke grup publik, endpoint baru `getKelasPublik` ditambahkan — **perlu `runFullTest()` ulang setelah upload**
+- `frontend/js/app.js` ditulis ulang total (1043 baris) via bash heredoc (menghindari bug "Field required" pada `create_file` untuk file besar yang tercatat di sesi sebelumnya) — semua item Bagian G.1 selesai
+- `frontend/app.html`: CSS baru lengkap ditambahkan (bottom nav, pagination, badge wali kelas, form grid, select dropdown, kartu kosong/muted, spacer form)
+- `frontend/index.html`: akar masalah tombol tak bisa diklik ditemukan (`.hero::before` absolute tanpa `pointer-events`) dan diperbaiki; kepadatan info dikurangi (section 13 tabel database dihapus); tautan "Jadwal Kelas" ditambahkan
+- File baru `frontend/jadwal-publik.html` dibuat — halaman publik berdiri sendiri (tanpa `Auth`/`app.js`), langsung panggil `getKelasPublik`+`getJadwalKelasPublik`
+- `apps-script/README.md` dan `Master_Specification.md` diupdate mendokumentasikan endpoint baru, skema kehadiran, dan pagination
+- Semua file `.gs` lolos `node --check`; `app.js` dan script inline `jadwal-publik.html` lolos `node --check`
+- **Belum dilakukan**: deploy sungguhan, `runFullTest()` ulang setelah perubahan router, dan uji manual end-to-end oleh user
 
 ### 2026-09-04
 - Dokumen spesifikasi dan progress dibuat
@@ -279,4 +428,4 @@ Terakhir diperbarui: 2026-09-04
 
 | Tanggal | Masalah | Resolusi | Status |
 |---|---|---|---|
-| - | - | - | - |
+| 2026-09-08 | `testCacheCorrectness` di TestSuite.gs menulis baris log dummy dengan `aksi:'TEST'`, melanggar data validation dropdown kolom D sheet `13_LOG` (hanya terima LOGIN/LOGOUT/CREATE/UPDATE/DELETE) → `runFullTest()` gagal dengan error di baris sheet, bukan di logic cache-nya | Ganti `'TEST'` jadi `'CREATE'` di baris `appendManyToSheet('13_LOG', ...)` pada `testCacheCorrectness` | Selesai |

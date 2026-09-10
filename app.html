@@ -40,7 +40,7 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     color: var(--gray-800);
     font-size: 15px;
-    padding-bottom: 76px; /* ruang untuk bottom nav mobile */
+    padding-bottom: 100px; /* ruang aman untuk bottom nav mobile + buffer ekstra */
   }
 
   a { color: inherit; text-decoration: none; }
@@ -82,6 +82,18 @@
     font-size: 12px;
     font-weight: 600;
   }
+  .topbar-sync {
+    background: transparent;
+    border: none;
+    color: white;
+    font-size: 16px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    opacity: .85;
+    transition: opacity .15s ease, transform .3s ease;
+  }
+  .topbar-sync.syncing { animation: syncspin .8s linear infinite; opacity: 1; }
+  @keyframes syncspin { to { transform: rotate(360deg); } }
 
   /* ── ROLE SWITCHER (untuk multi-role) ── */
   .role-tabs {
@@ -355,30 +367,199 @@
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .toast.error { background: var(--red); }
 
-  /* ── BOTTOM NAV ── */
+  /* ── BOTTOM NAV (modern, ringan, minimal) ── */
   .bottom-nav {
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    background: white;
-    border-top: 1px solid var(--gray-200);
+    background: rgba(255,255,255,.94);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--gray-100);
     display: flex;
-    z-index: 60;
-    box-shadow: 0 -2px 12px rgba(0,0,0,.06);
+    z-index: 70;
+    box-shadow: 0 -1px 6px rgba(0,0,0,.04);
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
   }
   .nav-item {
     flex: 1;
     text-align: center;
-    padding: 10px 4px 8px;
+    padding: 6px 4px;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--gray-400);
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 3px;
+    border-radius: 10px;
+    transition: color .15s ease;
+    position: relative;
   }
-  .nav-item.active { color: var(--blue); }
-  .nav-icon { font-size: 19px; }
+  .nav-item.active { color: var(--blue); font-weight: 700; }
+  .nav-item.active::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 16px;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--blue);
+  }
+  .nav-icon { font-size: 17px; opacity: .85; }
+  .nav-item.active .nav-icon { opacity: 1; }
+
+  /* ── PAGINATION ── */
+  .pagination-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 14px 0 30px; /* margin bawah ekstra supaya tidak tertutup bottom nav */
+    padding: 10px 12px;
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .page-btn {
+    background: var(--sky);
+    color: var(--blue);
+    border: none;
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .page-btn:disabled { opacity: .4; cursor: default; }
+  .page-info {
+    font-size: 11px;
+    color: var(--gray-600);
+    text-align: center;
+    flex: 1;
+  }
+
+  /* ── WALI KELAS BADGE ── */
+  .wali-info-badge {
+    display: inline-block;
+    background: var(--navy);
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 7px 14px;
+    border-radius: 20px;
+    margin-bottom: 12px;
+  }
+
+  /* ── FORM GRID 2 KOLOM ── */
+  .form-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .form-grid-2 .form-group { margin-bottom: 0; }
+  @media (max-width: 380px) {
+    .form-grid-2 { grid-template-columns: 1fr; }
+  }
+
+  /* ── SELECT DROPDOWN (filter) ── */
+  .select-input {
+    width: 100%;
+    border: 1.5px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 10px 13px;
+    font-size: 14px;
+    font-family: inherit;
+    background: white;
+    color: var(--gray-800);
+  }
+  .select-input:focus { outline: none; border-color: var(--blue); }
+
+  /* ── KARTU JADWAL KOSONG / TIDAK MENGAJAR ── */
+  .jadwal-card.kosong {
+    background: var(--gray-50);
+    box-shadow: none;
+    border: 1px dashed var(--gray-300);
+    border-left: 4px solid var(--gray-300);
+  }
+  .jadwal-mapel.muted {
+    color: var(--gray-400);
+    font-weight: 600;
+    font-style: italic;
+  }
+
+  /* ── SPACER DI BAWAH TOMBOL FORM (supaya tidak tertutup bottom nav) ── */
+  .form-bottom-space { height: 40px; }
+
+  /* ── HINT TEXT (di bawah date-bar, penjelasan bisa ganti tanggal) ── */
+  .hint-text {
+    font-size: 11.5px;
+    color: var(--gray-400);
+    margin: -6px 0 12px;
+    line-height: 1.5;
+  }
+
+  /* ── QUICK LINK (mis. "Lihat Jadwal Kelas Lain" di Dashboard) ── */
+  .quick-link-row { margin-bottom: 14px; }
+  .quick-link {
+    display: inline-block;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--blue);
+    background: var(--sky);
+    padding: 7px 13px;
+    border-radius: 20px;
+    cursor: pointer;
+  }
+
+  /* ── DAY TABS (Admin > Jadwal per Guru — ganti tab TIDAK reload data) ── */
+  .day-tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    margin-bottom: 14px;
+    padding-bottom: 2px;
+  }
+  .day-tab {
+    flex-shrink: 0;
+    background: white;
+    border: 1.5px solid var(--gray-200);
+    color: var(--gray-600);
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: 20px;
+  }
+  .day-tab.active { background: var(--navy); border-color: var(--navy); color: white; }
+
+  /* ── RINGKASAN SISWA TIDAK HADIR (Wali Kelas) ── */
+  .absent-summary {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    border-left: 4px solid var(--amber);
+  }
+  .absent-summary-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gray-800);
+    margin-bottom: 10px;
+  }
+  .absent-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-top: 1px solid var(--gray-100);
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .absent-row:first-of-type { border-top: none; }
+  .absent-nama { font-size: 13px; font-weight: 600; }
+  .absent-tags { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
 
   /* ── LOADING ── */
   .loading-box {
@@ -447,6 +628,7 @@
     <div class="topbar-name" id="hdrAppName">Jurnal Mengajar</div>
     <div class="topbar-user" id="hdrUser">Memuat...</div>
   </div>
+  <button class="topbar-sync" id="btnSync" onclick="forceSyncData()" title="Sinkronkan data terbaru">🔄</button>
   <button class="topbar-logout" onclick="Auth.logout()">Keluar</button>
 </div>
 
@@ -469,6 +651,7 @@
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/cache.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jadwal Kelas — Jurnal Mengajar</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #0f1f3d; --blue: #2563eb; --blue-l: #dbeafe; --sky: #e8f0fe;
+    --gray-50: #f8fafc; --gray-200: #e2e8f0; --gray-400: #94a3b8;
+    --gray-600: #475569; --gray-800: #1e293b;
+    --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
+  }
+  html, body { height: 100%; background: var(--gray-50); }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; color: var(--gray-800); font-size: 15px; }
+  a { color: inherit; text-decoration: none; }
+
+  .topbar {
+    background: var(--navy); color: white; padding: 14px 18px;
+    display: flex; align-items: center; gap: 12px;
+    position: sticky; top: 0; z-index: 50; box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  }
+  .topbar-logo {
+    width: 30px; height: 30px; background: white; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: var(--navy); font-size: 13px; flex-shrink: 0;
+  }
+  .topbar-title { flex: 1; }
+  .topbar-name { font-size: 14px; font-weight: 700; }
+  .topbar-sub { font-size: 11px; color: rgba(255,255,255,.6); }
+  .topbar-back {
+    background: rgba(255,255,255,.12); border: none; color: white;
+    padding: 7px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  }
+
+  .container { max-width: 560px; margin: 0 auto; padding: 18px 16px; }
+
+  .info-banner {
+    background: var(--sky); color: var(--blue); font-size: 12px; font-weight: 600;
+    padding: 10px 14px; border-radius: var(--radius); margin-bottom: 16px;
+  }
+
+  .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  @media (max-width: 380px) { .form-grid-2 { grid-template-columns: 1fr; } }
+
+  .form-label { font-size: 12px; font-weight: 700; color: var(--gray-600); margin-bottom: 6px; display: block; }
+  .select-input {
+    width: 100%; border: 1.5px solid var(--gray-200); border-radius: 8px;
+    padding: 10px 13px; font-size: 14px; font-family: inherit; background: white; color: var(--gray-800);
+  }
+  .select-input:focus { outline: none; border-color: var(--blue); }
+
+  .sec-title {
+    font-size: 13px; font-weight: 700; color: var(--gray-600);
+    margin: 20px 0 10px; text-transform: uppercase; letter-spacing: .03em;
+  }
+
+  .jadwal-card {
+    background: white; border-radius: var(--radius); box-shadow: var(--shadow);
+    margin-bottom: 12px; padding: 14px 16px; border-left: 4px solid var(--blue);
+  }
+  .jadwal-mapel { font-size: 15px; font-weight: 700; color: var(--navy); }
+  .jadwal-meta { font-size: 12px; color: var(--gray-400); margin-top: 2px; }
+
+  .empty { text-align: center; padding: 48px 20px; color: var(--gray-400); }
+  .empty-icon { font-size: 36px; margin-bottom: 12px; }
+  .empty-text { font-size: 14px; }
+
+  .loading-box { text-align: center; padding: 40px; color: var(--gray-400); font-size: 13px; }
+  .spinner {
+    display: inline-block; width: 22px; height: 22px; border: 3px solid var(--gray-200);
+    border-top-color: var(--blue); border-radius: 50%; animation: spin .7s linear infinite; margin-bottom: 10px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">M²</div>
+  <div class="topbar-title">
+    <div class="topbar-name">Jadwal Kelas</div>
+    <div class="topbar-sub">Jurnal Mengajar · SMP Muhammadiyah 2 Cilacap</div>
+  </div>
+  <a href="index.html"><button class="topbar-back">← Beranda</button></a>
+</div>
+
+<div class="container">
+  <div class="info-banner">🔓 Halaman ini publik — tidak perlu login untuk melihat jadwal kelas.</div>
+
+  <div class="form-grid-2">
+    <div>
+      <span class="form-label">Pilih Kelas</span>
+      <select class="select-input" id="selKelas"></select>
+    </div>
+    <div>
+      <span class="form-label">Pilih Hari</span>
+      <select class="select-input" id="selHari">
+        <option value="SENIN">Senin</option>
+        <option value="SELASA">Selasa</option>
+        <option value="RABU">Rabu</option>
+        <option value="KAMIS">Kamis</option>
+        <option value="JUMAT">Jumat</option>
+        <option value="SABTU">Sabtu</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="sec-title" id="hasilTitle">Jadwal</div>
+  <div id="hasil"><div class="loading-box"><div class="spinner"></div><br>Memuat...</div></div>
+</div>
+
+<script src="js/config.js"></script>
+<script>
+  var $selKelas = document.getElementById('selKelas');
+  var $selHari = document.getElementById('selHari');
+  var $hasil = document.getElementById('hasil');
+  var $hasilTitle = document.getElementById('hasilTitle');
+
+  function esc(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function callPublic(action, params) {
+    var query = Object.keys(params || {}).map(function(k) {
+      return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+    }).join('&');
+    var url = CONFIG.API_URL + '?action=' + encodeURIComponent(action) + (query ? '&' + query : '');
+    return fetch(url, { method: 'GET' })
+      .then(function(r) { return r.json(); })
+      .catch(function() { return { ok: false, error: 'Koneksi gagal. Periksa internet Anda.' }; });
+  }
+
+  function hariIniIndo() {
+    var days = ['MINGGU','SENIN','SELASA','RABU','KAMIS','JUMAT','SABTU'];
+    return days[new Date().getDay()];
+  }
+
+  function muatJadwal() {
+    var kelasId = $selKelas.value;
+    var hari = $selHari.value;
+    if (!kelasId) return;
+
+    $hasilTitle.textContent = 'Jadwal';
+    $hasil.innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
+
+    callPublic('getJadwalKelasPublik', { kelas_id: kelasId, hari: hari }).then(function(res) {
+      if (!res.ok) { $hasil.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text">' + esc(res.error) + '</div></div>'; return; }
+      var d = res.data;
+      $hasilTitle.textContent = 'Jadwal ' + esc(d.nama_kelas);
+
+      if (d.jadwal.length === 0) {
+        $hasil.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Tidak ada jadwal pada hari ini</div></div>';
+        return;
+      }
+
+      var html = '';
+      d.jadwal.forEach(function(j) {
+        html += '<div class="jadwal-card">'
+          + '<div class="jadwal-mapel">' + esc(j.nama_mapel) + '</div>'
+          + '<div class="jadwal-meta">' + esc(j.jam_label) + ' · Guru: ' + esc(j.nama_guru) + '</div>'
+          + '</div>';
+      });
+      $hasil.innerHTML = html;
+    });
+  }
+
+  callPublic('getKelasPublik', {}).then(function(res) {
+    if (!res.ok) {
+      $hasil.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text">' + esc(res.error) + '</div></div>';
+      return;
+    }
+    var kelas = res.data.slice().sort(function(a, b) { return String(a.nama_kelas).localeCompare(String(b.nama_kelas)); });
+    $selKelas.innerHTML = kelas.map(function(k) {
+      return '<option value="' + k.kelas_id + '">' + esc(k.nama_kelas) + '</option>';
+    }).join('');
+    $selHari.value = hariIniIndo() === 'MINGGU' ? 'SENIN' : hariIniIndo();
+
+    $selKelas.addEventListener('change', muatJadwal);
+    $selHari.addEventListener('change', muatJadwal);
+
+    muatJadwal();
+  });
+</script>
+</body>
+</html>

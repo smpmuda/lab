@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jurnal Mengajar — SMP Muhammadiyah 2 Cilacap OK</title>
+  <title>Jurnal Mengajar — SMP Muhammadiyah 2 Cilacap</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -108,6 +108,11 @@
       content: '';
       position: absolute;
       inset: 0;
+      /* AKAR MASALAH tombol tak bisa diklik: pseudo-element absolute tanpa
+         z-index/pointer-events secara default ikut naik ke lapisan "positioned"
+         dan menutupi seluruh konten normal-flow di dalam .hero (termasuk
+         .hero-actions), meski hanya dekorasi background bermotif. Fix: */
+      pointer-events: none;
       background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
     }
 
@@ -595,7 +600,7 @@
       <span>Masuk ke Aplikasi</span>
       <span>→</span>
     </a>
-    <a href="Master_Specification.md" class="btn-secondary">Baca Spesifikasi</a>
+    <a href="jadwal-publik.html" class="btn-secondary">🗓️ Lihat Jadwal Kelas</a>
   </div>
 </section>
 
@@ -795,70 +800,7 @@
       <div class="arch-node light">Google Spreadsheet — Database (13 Sheet)</div>
     </div>
     <div class="arch-desc" style="margin-top:12px; font-size:12px; color:var(--gray-400)">
-      ✦ Tidak perlu VPS &nbsp;·&nbsp; ✦ Backup otomatis Google &nbsp;·&nbsp; ✦ Bisa digunakan sekolah lain tanpa coding ulang
-    </div>
-  </div>
-</div>
-
-<hr class="divider">
-
-<!-- DATABASE STRUCTURE -->
-<div class="section">
-  <div class="section-title">13 Tabel Database</div>
-  <div class="section-sub">Setiap sheet punya fungsi yang jelas dan tidak tumpang tindih.</div>
-
-  <div class="sheet-grid">
-    <div class="sheet-item">
-      <div class="sheet-num">01</div>
-      <div><div class="sheet-name">CONFIG</div><div class="sheet-desc">Konfigurasi sekolah</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">02</div>
-      <div><div class="sheet-name">TAHUN_AJARAN</div><div class="sheet-desc">Periode akademik</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">03</div>
-      <div><div class="sheet-name">USER</div><div class="sheet-desc">Akun & autentikasi</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">04</div>
-      <div><div class="sheet-name">GURU</div><div class="sheet-desc">Data guru</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">05</div>
-      <div><div class="sheet-name">KELAS</div><div class="sheet-desc">Rombongan belajar</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">06</div>
-      <div><div class="sheet-name">SISWA</div><div class="sheet-desc">Daftar siswa per kelas</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">07</div>
-      <div><div class="sheet-name">MAPEL</div><div class="sheet-desc">Mata pelajaran</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">08</div>
-      <div><div class="sheet-name">JAM</div><div class="sheet-desc">Jam pelajaran + waktu</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">09</div>
-      <div><div class="sheet-name">JADWAL</div><div class="sheet-desc">Guru + kelas + hari + jam</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">10</div>
-      <div><div class="sheet-name">JURNAL</div><div class="sheet-desc">Isi jurnal mengajar</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">11</div>
-      <div><div class="sheet-name">JURNAL_JAM</div><div class="sheet-desc">Relasi jurnal ↔ jam</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">12</div>
-      <div><div class="sheet-name">KEHADIRAN</div><div class="sheet-desc">Status hadir per siswa</div></div>
-    </div>
-    <div class="sheet-item">
-      <div class="sheet-num">13</div>
-      <div><div class="sheet-name">LOG</div><div class="sheet-desc">Riwayat aktivitas</div></div>
+      ✦ Tidak perlu VPS &nbsp;·&nbsp; ✦ Backup otomatis Google &nbsp;·&nbsp; ✦ Biaya server: Rp0
     </div>
   </div>
 </div>

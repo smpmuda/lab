@@ -87,6 +87,17 @@ JAM_MAKS_KAMIS, JAM_MAKS_JUMAT, JAM_MAKS_SABTU
 ZONA_WAKTU, IZIN_EDIT_JURNAL, BATAS_EDIT_HARI
 ```
 
+**Konfigurasi otomatis (JANGAN diedit manual):**
+```
+DATA_VERSION  — [BARU, 2026-09-08] Nomor versi data master, naik +1 setiap
+                kali sheet 04_GURU/05_KELAS/06_SISWA/07_MAPEL/09_JADWAL
+                diedit, lewat trigger onEdit(e) di Code.gs. Dipakai cache
+                client-side (frontend/js/cache.js) untuk tahu kapan cache
+                di localStorage tiap pengguna harus dibersihkan. Baris ini
+                dibuat OTOMATIS oleh bumpDataVersion() (Utils.gs) saat
+                pertama kali dipakai — tidak perlu dibuat manual.
+```
+
 #### `02_TAHUN_AJARAN`
 | Kolom | Tipe | Contoh |
 |---|---|---|
@@ -211,14 +222,20 @@ JJ002 | JR001 | J02
 ```
 
 #### `12_KEHADIRAN`
+> **[DIPERBARUI — skema hanya-tidak-hadir]** Sheet ini HANYA menyimpan baris untuk
+> siswa yang TIDAK hadir (SAKIT/IZIN/ALPA). Siswa yang hadir TIDAK ditulis sebagai
+> baris sama sekali — dihitung di server sebagai `total_siswa_kelas − jumlah_baris_ini`.
+> Ini optimasi performa (kelas 33 siswa yang mayoritas hadir penuh: dari 33 baris
+> jadi 1–2 baris). Kolom kunci siswa juga sudah `nis` (bukan `siswa_id`), sesuai
+> keputusan NIS sebagai primary key siswa (lihat §3.2 `06_SISWA`).
+
 | Kolom | Tipe | Contoh |
 |---|---|---|
-| kehadiran_id | TEXT | KH00001 |
+| kehadiran_id | TEXT | KH000001 |
 | jurnal_id | TEXT | JR00001 |
-| siswa_id | TEXT | S0001 |
-| status | TEXT | HADIR / SAKIT / IZIN / ALPA |
+| nis | TEXT | 1001003 |
+| status | TEXT | SAKIT / IZIN / ALPA (HADIR tidak pernah disimpan) |
 | keterangan | TEXT | opsional |
-| updated_at | DATETIME | otomatis |
 
 #### `13_LOG`
 | Kolom | Tipe | Keterangan |
@@ -235,96 +252,146 @@ JJ002 | JR001 | J02
 
 ## 4. Desain API (Google Apps Script)
 
+> **[DIPERBARUI]** Bagian ini adalah blueprint awal proyek. Implementasi final
+> berbeda di beberapa detail teknis (dijelaskan di catatan tiap bagian) hasil
+> keputusan-keputusan selama pengembangan — lihat MASTER_CONTEXT_HANDOFF.md
+> Bagian H untuk daftar lengkap keputusan yang tidak boleh diubah lagi.
+> Semua endpoint (kecuali `login`/`getConfig`/`ping`/`getKelasPublik`/
+> `getJadwalKelasPublik`) memakai **GET dengan query param `?action=...&token=...`**
+> atau **POST dengan body JSON berisi `token`** — bukan method HTTP PUT (Apps
+> Script Web App hanya mendukung `doGet`/`doPost`).
+
 ### 4.1 Endpoint Autentikasi
 ```
 POST /exec?action=login
      body: { username, password }
-     return: { token, user: { user_id, nama, role, kelas_id? } }
+     return: { token, nama, role, kelas_wali }
+     Catatan: password PLAIN TEXT (keputusan eksplisit, sekolah internal,
+     TIDAK di-hash — lihat MASTER_CONTEXT_HANDOFF.md Bagian H.1)
 
 POST /exec?action=logout
-     header: Authorization: Bearer <token>
+     body: { token }
 ```
 
 ### 4.2 Endpoint Guru
 ```
-GET  /exec?action=getJadwalSaya&tanggal=YYYY-MM-DD
-GET  /exec?action=getJurnalSaya&tanggal=YYYY-MM-DD
+GET  /exec?action=getJadwalHariIni&tanggal=YYYY-MM-DD&token=...
+     → SEMUA jam 1..max-hari ditampilkan; jam kosong ditandai
+       { tidak_mengajar: true, nama_mapel: 'Tidak Mengajar' }
+GET  /exec?action=getJurnalSaya&page=1&pageSize=25&token=...
+     → { items, page, pageSize, totalItems, totalPages }
 POST /exec?action=createJurnal
-     body: { tanggal, kelas_id, mapel_id, jam_ids[], ringkasan_kegiatan, catatan, kehadiran[] }
-PUT  /exec?action=updateJurnal
-     body: { jurnal_id, ringkasan_kegiatan, catatan, kehadiran[] }
+     body: { token, tanggal, kelas_id, mapel_id, jam_ids[], ringkasan_kegiatan,
+             catatan, kehadiran[] }
+     Catatan: kehadiran[] HANYA berisi siswa TIDAK hadir (SAKIT/IZIN/ALPA)
+POST /exec?action=updateJurnal
+     body: { token, jurnal_id, ringkasan_kegiatan, catatan, kehadiran[] }
 ```
 
 ### 4.3 Endpoint Wali Kelas
 ```
-GET  /exec?action=getJurnalKelas&kelas_id=K001&tanggal=YYYY-MM-DD
-GET  /exec?action=getSiswaKelas&kelas_id=K001
-GET  /exec?action=getRingkasanBulanan&kelas_id=K001&bulan=07&tahun=2026
+GET  /exec?action=getJadwalKelas&kelas_id=K001&tanggal=YYYY-MM-DD&token=...
+     → termasuk rekap kehadiran + nama_kelas (untuk badge "Wali Kelas: X")
 ```
 
 ### 4.4 Endpoint Admin
 ```
-GET/POST/PUT /exec?action=manageGuru
-GET/POST/PUT /exec?action=manageKelas
-GET/POST/PUT /exec?action=manageSiswa
-GET/POST/PUT /exec?action=manageMapel
-GET/POST/PUT /exec?action=manageJadwal
-GET/POST/PUT /exec?action=manageJam
-GET/POST/PUT /exec?action=manageUser
-GET          /exec?action=getAllJurnal
-GET          /exec?action=getConfig
-PUT          /exec?action=updateConfig
-GET          /exec?action=getLog
+GET  /exec?action=getAllJurnal&tanggal=YYYY-MM-DD&guru_id=&mapel_id=&page=1&token=...
+     Catatan: tanggal WAJIB, maksimal 1 hari per pencarian (mencegah tarik
+     seluruh riwayat sekaligus). Response terpaginasi.
+GET  /exec?action=getJadwalPerGuru&guru_id=G001&token=...    [BARU]
+     → jadwal 1 guru dikelompokkan per hari (SENIN–SABTU)
+GET  /exec?action=getUser&token=...
+POST /exec?action=updateConfig    body: { token, updates: {...} }
+GET  /exec?action=getLog&page=1&token=...   → terpaginasi, terbaru dulu
+
+Catatan: TIDAK ADA endpoint manageGuru/manageKelas/manageSiswa/manageMapel/
+manageJadwal/manageJam/manageUser — data master dikelola manual langsung di
+Spreadsheet (keputusan eksplisit, lihat MASTER_CONTEXT_HANDOFF.md Bagian H.6).
 ```
 
 ### 4.5 Endpoint Umum
 ```
-GET  /exec?action=getConfig      → konfigurasi publik (nama sekolah, dll)
-GET  /exec?action=getMapel       → daftar mapel aktif
-GET  /exec?action=getKelas       → daftar kelas aktif
-GET  /exec?action=getGuru        → daftar guru aktif
-GET  /exec?action=getJam         → daftar jam pelajaran
+GET  /exec?action=getConfig                    → publik, tanpa token
+GET  /exec?action=getMapel&token=...           → daftar mapel aktif
+GET  /exec?action=getKelas&token=...           → daftar kelas (+ nama wali kelas)
+GET  /exec?action=getGuru&token=...            → daftar guru aktif
+GET  /exec?action=getJam&token=...             → daftar jam pelajaran
+GET  /exec?action=getKelasPublik               → [BARU] publik, tanpa token,
+     daftar kelas minimal — untuk menu "Jadwal Kelas" di homepage
+GET  /exec?action=getJadwalKelasPublik&kelas_id=&hari=  → [BARU] publik, tanpa
+     token, jadwal (mapel+guru+jam) tanpa data kehadiran/jurnal
 ```
 
 ### 4.6 Validasi di Apps Script (wajib)
-- Cek token valid setiap request (kecuali login)
+- Cek token valid setiap request (kecuali `login`/`getConfig`/`ping`/`getKelasPublik`/`getJadwalKelasPublik`)
 - Cek role sesuai endpoint yang diakses
-- Validasi bentrok jadwal saat input jadwal baru
-- Validasi batas waktu edit jurnal (`BATAS_EDIT_HARI` dari config)
-- Hash password dengan SHA-256 sebelum disimpan
+- Konflik jadwal ditampilkan sebagai **warning** (`konflik`/`konflik_info`), **TIDAK PERNAH diblokir** (keputusan eksplisit, Bagian H.5)
+- Validasi batas waktu edit jurnal (`BATAS_EDIT_HARI` dari config, default 7 hari)
+- Password **TIDAK di-hash** (keputusan eksplisit, Bagian H.1) — jangan tambahkan SHA-256 tanpa diskusi ulang dengan user
 - Sanitasi input sebelum menulis ke Spreadsheet
+
+### 4.7 Arsitektur Cache Client-Side [BARU, 2026-09-08]
+
+> Keputusan ini diambil setelah diskusi keamanan eksplisit — lihat catatan
+> di bawah sebelum mengubah apapun di area ini.
+
+```
+Spreadsheet (sumber data asli)
+        │
+        │  Apps Script — endpoint token-authenticated, SAMA seperti biasa
+        ▼
+   Browser tiap pengguna
+   ┌──────────────────────────────┐
+   │ localStorage (per perangkat) │  ← guru, kelas, mapel, jam, siswa
+   │ + DATA_VERSION               │     per-kelas, jadwal per-guru
+   └──────────────────────────────┘
+        │
+        ▼
+     Aplikasi (app.js)
+```
+
+**Keputusan sadar yang PENTING dipertahankan:**
+- **TIDAK PERNAH** menyimpan data master (siswa/guru/kelas) sebagai file JSON statis di repo GitHub. Repo `smpmuda/jurnal` bersifat publik (syarat GitHub Pages gratis) — menaruh data siswa (anak di bawah umur) di sana berarti bisa diakses siapa saja tanpa login, JAUH lebih tidak aman dibanding kondisi sekarang (di balik token Apps Script).
+- Cache HANYA di `localStorage`, scope per-perangkat, tidak pernah dikirim ke mana pun.
+- Data transaksional (jurnal, kehadiran, log, dan endpoint jadwal yang mengandung status `sudah_diisi`/konflik) **TIDAK PERNAH** masuk cache ini — selalu live.
+- Invalidasi otomatis via `DATA_VERSION` di `01_CONFIG`, dinaikkan oleh trigger sederhana `onEdit(e)` (Code.gs) — admin tidak perlu setup apapun.
+- Tombol sinkronisasi manual (🔄) tersedia untuk SEMUA role sebagai jalan pintas.
+- Kalau `localStorage` gagal/nonaktif, aplikasi otomatis fallback ke perilaku lama (selalu fetch live) — TIDAK PERNAH menyebabkan error ke pengguna. Lihat `frontend/js/cache.js` untuk detail implementasi gagal-aman ini.
 
 ---
 
 ## 5. Struktur File GitHub
 
+> **[DIPERBARUI]** Bagian ini adalah blueprint awal proyek. Struktur final
+> lebih sederhana (satu `app.js` sebagai single-file SPA, bukan dipecah
+> per-halaman; CSS inline di `<style>` masing-masing file HTML, bukan
+> file `.css` terpisah). Repo juga sudah dipindah dari `smpmuda/lab` ke
+> `smpmuda/jurnal`.
+
 ```
-smpmuda/lab/
+smpmuda/jurnal/
 │
-├── index.html              ← halaman utama / landing
-├── app.html                ← aplikasi utama (single-page)
-├── login.html              ← halaman login
-│
-├── css/
-│   ├── style.css
-│   └── print.css           ← untuk cetak laporan
+├── index.html                ← halaman utama / landing (publik)
+├── app.html                  ← aplikasi utama (single-page, CSS inline)
+├── login.html                ← halaman login
+├── jadwal-publik.html        ← [BARU] Jadwal Kelas publik, TANPA login
 │
 ├── js/
-│   ├── config.js           ← API_URL + APP_NAME + VERSION
-│   ├── auth.js             ← login, logout, session
-│   ├── api.js              ← wrapper fetch ke Apps Script
-│   ├── app.js              ← router + init
-│   ├── dashboard.js        ← halaman dashboard
-│   ├── jurnal.js           ← isi/lihat jurnal
-│   ├── kelas.js            ← jurnal kelas (wali kelas)
-│   └── admin.js            ← manajemen data master
+│   ├── config.js              ← API_URL + APP_NAME + VERSION
+│   ├── api.js                 ← wrapper fetch ke Apps Script
+│   ├── auth.js                ← login, logout, session
+│   ├── cache.js               ← [BARU] cache data master di localStorage
+│   └── app.js                 ← router + SEMUA view (single file)
 │
-├── assets/
-│   ├── logo.png
-│   └── favicon.ico
+├── apps-script/                ← source Apps Script (di-sync via clasp)
+│   ├── Code.gs                  ← router + trigger onEdit
+│   ├── Auth.gs, Data.gs, Jurnal.gs, Utils.gs, TestSuite.gs
+│   └── appsscript.json
 │
-├── Master_Specification.md ← file ini
-├── Master_Progress.md      ← progress tracker
+├── Master_Specification.md    ← file ini
+├── Master_Progress.md         ← progress tracker
+├── Panduan_Deploy_dan_Uji.md
 └── README.md
 ```
 
