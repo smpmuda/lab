@@ -4,7 +4,10 @@
 
 const Auth = {
 
-  KEY: 'jm_session',
+  // [FIX 2026-09-12] Di-namespace per deployment (lihat CONFIG.STORAGE_NS
+  // di config.js) — supaya token /lab/ dan /jurnal/ tidak saling bocor
+  // walau satu origin browser yang sama.
+  KEY: 'jm_session_' + CONFIG.STORAGE_NS,
 
   saveSession: function(data) {
     sessionStorage.setItem(this.KEY, JSON.stringify(data));

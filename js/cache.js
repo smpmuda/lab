@@ -25,8 +25,11 @@
 // ============================================================
 
 var DataCache = (function() {
-  var LS_PREFIX = 'jm_cache_';
-  var LS_VERSION_KEY = 'jm_cache_version';
+  // [FIX 2026-09-12] Di-namespace per deployment (lihat CONFIG.STORAGE_NS
+  // di config.js) — supaya cache master data /lab/ dan /jurnal/ tidak
+  // saling bercampur walau satu origin browser yang sama.
+  var LS_PREFIX = 'jm_cache_' + CONFIG.STORAGE_NS + '_';
+  var LS_VERSION_KEY = 'jm_cache_version_' + CONFIG.STORAGE_NS;
 
   function isAvailable() {
     try {
