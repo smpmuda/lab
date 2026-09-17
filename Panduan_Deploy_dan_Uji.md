@@ -13,6 +13,52 @@ jangan lanjut ke langkah berikutnya kalau verifikasi gagal.
 > 4. Timpa ulang seluruh isi folder `frontend/` di GitHub, termasuk file baru `js/cache.js`
 > 5. **Test WAJIB**: jalankan skenario C8.9 (test cache & trigger `onEdit`) — ini fitur baru yang paling berisiko kalau ada yang tidak sesuai harapan
 
+> **CATATAN UPDATE 2026-09-17 (fix nama siswa hilang + redesain PDF kartu + fix 4 test palsu):**
+> - Timpa `apps-script/Jurnal.gs`, `apps-script/TestSuite.gs`, `frontend/js/app.js` → Deploy New version.
+> - Jalankan `runFullTest()` ulang — 4 FAIL sebelumnya (CONFIG JAM_MAKS, createJurnal duplikat,
+>   getJadwalPerGuru) seharusnya sudah PASS.
+> - Test manual: Export PDF untuk minggu yang ada siswa TIDAK HADIR (sakit/izin/alpa) — buka
+>   PDF-nya, pastikan kotak merah muda di kartu sesi menampilkan `NIS xxxx — Nama Siswa (Status)`
+>   untuk SETIAP siswa yang tidak hadir, bukan cuma NIS.
+> - Cek tampilan PDF baru: kartu per sesi dikelompokkan per hari (band gelap), strip KPI di atas
+>   (Total Sesi/Jumlah Hari/Total JP/Rata-rata Kehadiran), chip kehadiran berwarna. Pastikan tidak
+>   ada kartu yang terpotong di tepi halaman saat data banyak (lebih dari beberapa hari).
+> - Cek juga "Salin Prompt AI" — baris "Siswa tidak hadir" sekarang berupa daftar per siswa
+>   dengan NIS, bukan satu baris gabungan.
+
+> **CATATAN UPDATE 2026-09-16 (fitur Salin Prompt AI):**
+> - Timpa ulang **hanya** `frontend/js/app.js` (tidak ada file backend `.gs` yang berubah).
+> - Test manual: buka **Jurnal Saya** (Guru) / **Jurnal Kelas** (Wali Kelas) / **Admin →
+>   Jurnal Guru** → klik **Salin Prompt AI** di sebelah tombol Export PDF → pastikan muncul
+>   toast "Prompt berhasil disalin ✓" DAN kotak teks di bawah tombol berisi data yang benar
+>   (tanggal, kelas/mapel, ringkasan, kehadiran sesuai minggu yang dipilih)
+> - Coba tempel hasil salinan ke Gemini/ChatGPT beneran, minta buatkan laporan pembelajaran
+>   — cek hasilnya masuk akal dan tidak mengarang fakta yang tidak ada di data
+> - Kalau clipboard tidak jalan otomatis (browser tertentu suka memblokir), pastikan tombol
+>   "Salin Lagi" di kotak teks tetap berfungsi sebagai fallback
+
+> **CATATAN UPDATE 2026-09-15 (fix bug edit-jurnal + fitur Export PDF Mingguan):**
+> 1. Timpa ulang **3 file**: `apps-script/Jurnal.gs`, `apps-script/Code.gs`, `apps-script/TestSuite.gs`
+> 2. Timpa ulang **2 file frontend**: `frontend/app.html`, `frontend/js/app.js`
+> 3. Deploy → Manage deployments → Edit → **New version** → Deploy (bukan "New deployment")
+> 4. Jalankan `runFullTest()` — ada test baru `testRekapJurnalMingguan` (section 7)
+> 5. **Test manual WAJIB** (fitur baru, belum pernah dicoba di browser sungguhan):
+>    - Login sebagai GURU → buka **Jurnal Saya** → pastikan ada kartu "Export Rekap Jurnal
+>      Mingguan (PDF)" di atas daftar. Pilih tanggal apa saja → cek label periode otomatis
+>      jadi Senin–Sabtu minggu itu → klik **Export PDF** → PDF ter-download, isinya sesuai
+>      jurnal Anda di minggu itu saja (bukan minggu lain)
+>    - Login sebagai WALI KELAS → buka **Jurnal Kelas** → cek kartu export yang sama muncul
+>      di bagian bawah halaman → coba export
+>    - Login sebagai ADMIN → buka **Jurnal Guru** → cek panel "Export Rekap Jurnal Mingguan"
+>      di bawah tombol Cari → coba ganti jenis **Jurnal Guru** ↔ **Jurnal Kelas** (dropdown
+>      target harus ikut berubah isinya) → coba export kedua jenis
+>    - Coba pilih minggu yang TIDAK ada jurnalnya sama sekali → PDF tetap harus ter-generate
+>      (bukan error), isinya baris "Tidak ada jurnal pada periode ini"
+>    - Kalau sebelumnya guru non-admin pernah gagal edit jurnal dengan pesan "Fitur edit
+>      jurnal sedang dinonaktifkan oleh admin" padahal `IZIN_EDIT_JURNAL` sudah dicentang
+>      TRUE di `01_CONFIG` — coba lagi sekarang, seharusnya sudah bisa (ini bug yang diperbaiki
+>      sesi ini, lihat `Master_Progress.md` bagian 2026-09-15)
+
 ---
 
 ## BAGIAN A — Setup Spreadsheet & Apps Script
@@ -342,6 +388,83 @@ Login sebagai `admin`:
 - [ ] Login sebagai guru, buka jurnal yang dibuat hari ini
 - [ ] Tombol **Edit Jurnal Ini** harus **hilang** (karena sudah lewat batas 0 hari)
 - [ ] Kembalikan `BATAS_EDIT_HARI` ke `7`
+
+---
+
+### C9.5. Test UI/UX Overhaul (2026-09-12) — Filter Chip, Visual Fintech, Dashboard Guru
+
+**Filter chip Jurnal Saya (poin 6):**
+- [ ] Login sebagai Guru → **Jurnal Saya**
+- [ ] Filter Bulan sekarang tampil sebagai deretan pill/chip bisa digeser horizontal (bukan dropdown) — cek bisa digeser di layar HP sempit
+- [ ] Tap salah satu bulan → chip itu jadi aktif (warna gelap), daftar jurnal ter-filter, halaman kembali ke page 1
+- [ ] Tap "Semua Bulan" → filter reset, semua jurnal tampil lagi
+
+**Filter card Admin Jurnal (poin 6):**
+- [ ] Login sebagai Admin → **Semua Jurnal**
+- [ ] Form filter (Tanggal/Kelas/Guru/Mapel) sekarang ada di dalam satu kartu putih dengan bayangan — bukan lagi menempel langsung ke background halaman
+- [ ] Fungsi filter tetap sama seperti sebelumnya (Tanggal wajib, Kelas/Guru/Mapel opsional) — pastikan TIDAK ada regresi
+
+**Visual fintech/SaaS (poin 7):**
+- [ ] Sepintas bandingkan kartu jadwal, kartu list admin, tombol utama — semua sudut lebih membulat & bayangan lebih lembut/konsisten dibanding versi sebelumnya
+- [ ] Tap kartu jadwal/list admin yang bisa diklik → ada efek "menekan" halus (scale kecil)
+- [ ] Tap tombol biru utama (mis. "Simpan Jurnal", "Cari") → ada efek tekan halus, tidak kaku
+
+**Dashboard Guru — perceived performance (poin 8):**
+- [ ] Login sebagai Guru, buka **Hari Ini** (dashboard) — pertama kali tetap tampil skeleton (belum ada data tersimpan)
+- [ ] Ganti tanggal ke hari lain via date-picker, lalu ganti balik lagi ke tanggal SEBELUMNYA yang sudah pernah dibuka → tampilan harus **langsung terisi** (tanpa skeleton kosong), dengan teks kecil "Memperbarui data terbaru…" muncul sebentar lalu hilang setelah data terbaru datang
+- [ ] Selama teks "Memperbarui…" tampil, data yang terlihat adalah data SEBELUMNYA (mis. status "Belum diisi") — setelah refresh selesai, kalau ada perubahan di server (mis. jurnal baru saja diisi dari device lain), status harus ikut update jadi "Sudah diisi"
+- [ ] Ganti-ganti tanggal dengan cepat (tap beberapa tanggal berturut-turut) → tidak boleh ada tampilan "salah tanggal" (data tanggal A muncul saat sedang melihat tanggal B); kalau ada, itu bug race-condition, laporkan
+- [ ] Tap tombol **↻ Perbarui Data** di dashboard → harus langsung tampil skeleton (bukan data lama), lalu terisi data fresh — ini beda dari perilaku "balik ke tanggal lama" di atas (yang sengaja tampil instan dari cache sementara)
+
+---
+
+### C9.6. Test Perluasan Lazy Loading & Menu Baru "Jadwal Saya" (2026-09-12, lanjutan)
+
+**Jurnal Saya (Guru) — instan saat balik ke filter/halaman yang sama:**
+- [ ] Login Guru → **Jurnal Saya**, buka salah satu bulan (mis. "Agustus") → tunggu sampai termuat
+- [ ] Pindah ke bulan lain, lalu tap "Agustus" lagi → daftar harus **langsung terisi** (tanpa skeleton kosong) dengan teks kecil "Memperbarui data terbaru…" sebentar, lalu hilang
+- [ ] Pindah halaman (kalau data >1 halaman), balik ke halaman sebelumnya → sama, instan
+
+**Jurnal Kelas (Wali Kelas) — instan saat balik ke tanggal yang sama:**
+- [ ] Login sebagai Wali Kelas → buka **Jurnal Kelas**, biarkan termuat
+- [ ] Ganti tanggal, lalu ganti balik ke tanggal semula → tampilan instan + "Memperbarui data terbaru…" muncul sebentar
+- [ ] Kalau ada perubahan jurnal dari device lain saat itu (mis. guru baru saja isi jurnal), status "Belum diisi"→"✓ Diisi" harus ikut ter-update setelah refresh selesai
+
+**Log Aktivitas (Admin) — instan saat balik ke halaman yang sama:**
+- [ ] Login Admin → **Log**, buka halaman 2, balik ke halaman 1, lalu ke halaman 2 lagi → halaman 2 langsung terisi instan + indikator halus, bukan skeleton kosong
+
+**Menu baru "Jadwal Saya" (Guru):**
+- [ ] Login sebagai Guru → cek bottom nav sekarang ada 4 menu: Hari Ini, Jurnal Saya, **Jadwal Saya** (baru), Jadwal Kelas
+- [ ] Buka **Jadwal Saya** → tampil tab hari (Senin–Jumat/Sabtu sesuai konfigurasi sekolah), isi jadwal mengajar milik sendiri per hari (mapel + kelas + jam), mirip tampilan "Jadwal per Guru" di Admin tapi tanpa dropdown pilih guru
+- [ ] Ganti-ganti tab hari → TIDAK ada request baru ke server tiap ganti tab (harus terasa instan, data sudah di memori)
+- [ ] Kalau akun Guru ini tidak terhubung ke data guru (kasus langka), harus tampil pesan "Akun ini belum terhubung ke data guru", bukan error/blank
+
+**Fix tombol 🔄 Sinkron Manual — sekarang benar-benar reset semua tampilan:**
+- [ ] Sebagai Admin, buka **Jadwal Guru**, pilih salah satu guru sampai jadwalnya termuat
+- [ ] Tanpa pindah halaman, tap tombol 🔄 di header (sinkron manual)
+- [ ] Halaman **Jadwal Guru** yang sedang dibuka harus tampil skeleton lagi lalu ambil data fresh dari server — SEBELUM perbaikan ini, halaman tetap menampilkan data lama begitu saja (bug lama, sekarang sudah diperbaiki)
+
+---
+
+### C9.7. Test Redesign Visual "Modern SaaS" (2026-09-13)
+
+**Ikon Font Awesome:**
+- [ ] Buka app di browser — pastikan ikon bottom nav & tombol sync TIDAK kosong/kotak putus-putus (tanda Font Awesome gagal dimuat, biasanya karena CDN diblokir firewall sekolah — kalau ini terjadi, ikon akan hilang total, bukan tampil sebagai emoji lama)
+- [ ] Cek tiap role: Guru (4 ikon), Wali Kelas (2 ikon), Admin (5 ikon) — semua ikon besar & jelas, bukan emoji kecil lagi
+- [ ] Buka Admin → Beranda, pastikan label menu ("Jurnal Guru", "Jadwal Guru", "Log Aktivitas") sama persis dengan label di bottom nav
+
+**Animasi tombol sync:**
+- [ ] Tap ikon 🔄 (sekarang ikon Font Awesome) di pojok kanan atas header — HANYA ikonnya yang berputar, kotak/border tombolnya harus diam total
+- [ ] Tap tombol besar "Perbarui Data" di Dashboard/Jurnal Kelas/Admin Beranda — sama, hanya ikon kecil di kirinya yang berputar
+
+**Jurnal Saya — dropdown bulan:**
+- [ ] Buka Jurnal Saya (Guru) — filter sekarang berupa tombol "Semua Bulan" + satu dropdown "Bulan" (bukan deretan chip lagi)
+- [ ] Buka dropdown, pilih "Desember" (bulan yang dulu susah dijangkau di chip) — harus langsung bisa dipilih tanpa geser apapun, dan filter berjalan normal
+- [ ] Tap "Semua Bulan" — filter reset, dropdown kembali ke "Pilih bulan"
+
+**Font & tampilan umum:**
+- [ ] Font teks di seluruh app sekarang "Plus Jakarta Sans" (font custom, bukan font default HP) — cek dengan mata, bentuk huruf harus konsisten di semua device
+- [ ] Bandingkan sekilas dengan screenshot sebelumnya — tampilan harus terasa lebih halus/rapi, bukan berubah drastis (data, fungsi, alur kerja semua sama persis)
 
 ---
 
