@@ -379,6 +379,29 @@ function addDaysStr(dateStr, n) {
 // Kartu UI generik "pilih minggu + tombol Export PDF / Salin Prompt AI" —
 // dipakai ulang di 3 tempat. idPrefix harus unik per halaman supaya id
 // elemen tidak bentrok.
+// [BARU 2026-09-18] Batas karakter input jurnal — dipakai frontend
+// (maxlength+counter, cegah input kepanjangan) DAN nanti jadi acuan
+// perhitungan tinggi kartu PDF (1 sumber batas, tidak hardcode dobel).
+var BATAS_KARAKTER_RINGKASAN = 700;
+var BATAS_KARAKTER_CATATAN = 200;
+
+function charCounterHtml(id, max) {
+  return '<div class="char-counter" id="' + id + '_counter" style="text-align:right;font-size:11px;color:var(--gray-400);margin-top:4px">0/' + max + '</div>';
+}
+
+function bindCharCounter(id, max) {
+  var $el = document.getElementById(id);
+  var $counter = document.getElementById(id + '_counter');
+  if (!$el || !$counter) return;
+  function update() {
+    var len = $el.value.length;
+    $counter.textContent = len + '/' + max;
+    $counter.style.color = len >= max ? 'var(--red)' : (len >= max * 0.9 ? '#d97706' : 'var(--gray-400)');
+  }
+  $el.addEventListener('input', update);
+  update();
+}
+
 function exportPdfCardHtml(idPrefix, anchorDate) {
   var monday = mondayOfWeek(anchorDate || todayStr());
   var saturday = addDaysStr(monday, 5);
@@ -447,13 +470,17 @@ function bindExportPdfCard(idPrefix, handlers) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// [REDESAIN 2026-09-17] Mesin gambar PDF rekap — kartu per sesi
-// dikelompokkan per hari, terinspirasi contoh dashboard HTML yang
-// diberikan user (rekap_jurnal_mingguan_sub_dashboard.html), disederhanakan
-// jadi 1 kolom (bukan grid) supaya perhitungan tinggi/page-break aman
-// tanpa mesin layout CSS. Tidak ada perubahan backend untuk bagian ini —
-// murni olah ulang field yang sudah ada (ringkasan, catatan, kehadiran,
-// tidak_hadir_detail) jadi tampilan lebih rapi & sekali-lihat.
+// [REDESAIN 2026-09-18] Mesin gambar PDF rekap — v2, sesuai feedback user:
+// - Portrait A4, margin sempit (sebelumnya landscape)
+// - Header dokumen rata TENGAH (sebelumnya rata kiri)
+// - 1 sesi = 1 baris PENUH LEBAR (bukan lagi 2 kartu berdampingan per
+//   baris — itu yang bikin banyak space kosong kalau tinggi kontennya
+//   beda). Di DALAM 1 baris sesi, baru dibagi 2 kolom: kiri 70%
+//   (materi+catatan), kanan 30% (info kehadiran). Tinggi baris dihitung
+//   dinamis dari isi (bukan fixed), jadi 1 halaman bisa memuat sekitar
+//   3-5 sesi tergantung panjang kontennya (dibatasi maks 700/200 karakter
+//   — lihat BATAS_KARAKTER_RINGKASAN/CATATAN) — tanpa sisa ruang kosong
+//   yang percuma. Tidak ada perubahan backend untuk bagian ini.
 // ══════════════════════════════════════════════════════════════
 
 var PDF_WARNA = {
@@ -480,162 +507,185 @@ function _pdfChip(doc, x, y, teks, bg, warnaTeks, fontSize) {
   fontSize = fontSize || 8;
   doc.setFont(undefined, 'bold');
   doc.setFontSize(fontSize);
-  var padX = 6, h = 14;
+  var padX = 5, h = 12;
   var w = doc.getTextWidth(teks) + padX * 2;
   doc.setFillColor(bg[0], bg[1], bg[2]);
-  doc.roundedRect(x, y, w, h, 3, 3, 'F');
+  doc.roundedRect(x, y, w, h, 2.5, 2.5, 'F');
   doc.setTextColor(warnaTeks[0], warnaTeks[1], warnaTeks[2]);
-  doc.text(teks, x + padX, y + h - 4.3);
+  doc.text(teks, x + padX, y + h - 3.6);
   doc.setTextColor(0, 0, 0);
   doc.setFont(undefined, 'normal');
   return w;
 }
 
-// Band gelap judul dokumen (dipakai sekali, di halaman pertama saja).
+// Band gelap judul dokumen (dipakai sekali, di halaman pertama saja) —
+// SEMUA teks rata tengah, sesuai feedback user.
 function _pdfHeaderDokumen(doc, x, y, width, namaSekolah, judul, ringkasanBaris) {
-  var h = 68;
+  var h = 62;
+  var cx = x + width / 2;
   doc.setFillColor(PDF_WARNA.navy[0], PDF_WARNA.navy[1], PDF_WARNA.navy[2]);
   doc.roundedRect(x, y, width, h, 8, 8, 'F');
   doc.setTextColor(255, 255, 255);
-  doc.setFont(undefined, 'bold'); doc.setFontSize(15);
-  doc.text(judul, x + 16, y + 25);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(14.5);
+  doc.text(judul, cx, y + 23, { align: 'center' });
   doc.setFont(undefined, 'normal'); doc.setFontSize(9.5);
   doc.setTextColor(203, 213, 225);
-  doc.text(namaSekolah, x + 16, y + 41);
+  doc.text(namaSekolah, cx, y + 38, { align: 'center' });
   doc.setFontSize(9);
   doc.setTextColor(226, 232, 240);
-  doc.text(ringkasanBaris, x + 16, y + 57);
+  doc.text(ringkasanBaris, cx, y + 52, { align: 'center' });
   doc.setTextColor(0, 0, 0);
-  return y + h + 14;
+  return y + h + 12;
 }
 
 // Strip KPI ringkas (Total Sesi, Jumlah Hari, Total JP, Rata-rata Kehadiran).
 function _pdfKpiStrip(doc, x, y, width, kpis) {
-  var gap = 10, boxH = 48;
+  var gap = 8, boxH = 40;
   var boxW = (width - gap * (kpis.length - 1)) / kpis.length;
   kpis.forEach(function(kpi, i) {
     var bx = x + i * (boxW + gap);
     doc.setFillColor(255, 255, 255);
     doc.setDrawColor(PDF_WARNA.abuBorder[0], PDF_WARNA.abuBorder[1], PDF_WARNA.abuBorder[2]);
-    doc.roundedRect(bx, y, boxW, boxH, 5, 5, 'FD');
-    doc.setFont(undefined, 'bold'); doc.setFontSize(15);
+    doc.roundedRect(bx, y, boxW, boxH, 4, 4, 'FD');
+    doc.setFont(undefined, 'bold'); doc.setFontSize(13);
     doc.setTextColor(PDF_WARNA.navy[0], PDF_WARNA.navy[1], PDF_WARNA.navy[2]);
-    doc.text(String(kpi.value), bx + 10, y + 23);
-    doc.setFont(undefined, 'normal'); doc.setFontSize(7);
+    doc.text(String(kpi.value), bx + 8, y + 18);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(6.5);
     doc.setTextColor(PDF_WARNA.abuMuted[0], PDF_WARNA.abuMuted[1], PDF_WARNA.abuMuted[2]);
-    doc.text(kpi.label.toUpperCase(), bx + 10, y + 36, { maxWidth: boxW - 16 });
+    doc.text(kpi.label.toUpperCase(), bx + 8, y + 29, { maxWidth: boxW - 12 });
   });
   doc.setTextColor(0, 0, 0);
-  return y + boxH + 16;
+  return y + boxH + 12;
 }
 
-// Band gelap header per-hari (pengelompok kartu sesi).
-function _pdfHeaderHari(doc, x, y, width, hari, tanggalLabel, jumlahSesi, totalJp) {
-  var h = 24;
+// Band gelap header per-hari (pengelompok baris sesi).
+function _pdfHeaderHari(doc, x, y, width, hari, tanggalLabel, jumlahSesi) {
+  var h = 20;
   doc.setFillColor(PDF_WARNA.navySoft[0], PDF_WARNA.navySoft[1], PDF_WARNA.navySoft[2]);
   doc.rect(x, y, width, h, 'F');
   doc.setTextColor(255, 255, 255);
-  doc.setFont(undefined, 'bold'); doc.setFontSize(10.5);
-  doc.text((hari || '').toUpperCase() + '  ·  ' + tanggalLabel, x + 10, y + 16);
-  doc.setFont(undefined, 'normal'); doc.setFontSize(8.5);
-  var kananTeks = jumlahSesi + ' sesi' + (totalJp ? ' · ' + totalJp + ' JP' : '');
-  doc.text(kananTeks, x + width - 10 - doc.getTextWidth(kananTeks), y + 16);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(10);
+  doc.text((hari || '').toUpperCase() + '  ·  ' + tanggalLabel, x + 8, y + 13.5);
+  doc.setFont(undefined, 'normal'); doc.setFontSize(8);
+  var kananTeks = jumlahSesi + ' sesi';
+  doc.text(kananTeks, x + width - 8 - doc.getTextWidth(kananTeks), y + 13.5);
   doc.setTextColor(0, 0, 0);
-  return y + h + 8;
+  return y + h + 6;
 }
 
-// Tulis 1 blok "LABEL KECIL" + teks isi (bisa multi-baris). Return y baru.
-function _pdfBlokLabel(doc, x, y, labelTeks, bodyLines, lineH) {
-  doc.setFont(undefined, 'bold'); doc.setFontSize(7.2);
+// Tulis 1 blok "LABEL KECIL" + teks isi (bisa multi-baris), dalam 1 kolom
+// selebar `lebar`. Return y baru (dipakai kolom kiri: materi lalu catatan).
+function _pdfBlokLabel(doc, x, y, labelTeks, bodyLines, lineH, fontSizeBody) {
+  doc.setFont(undefined, 'bold'); doc.setFontSize(6.8);
   doc.setTextColor(PDF_WARNA.abuMuted[0], PDF_WARNA.abuMuted[1], PDF_WARNA.abuMuted[2]);
-  doc.text(labelTeks, x, y + 7);
-  y += 11;
-  doc.setFont(undefined, 'normal'); doc.setFontSize(8.8);
+  doc.text(labelTeks, x, y + 6.5);
+  y += 9.5;
+  doc.setFont(undefined, 'normal'); doc.setFontSize(fontSizeBody || 8.3);
   doc.setTextColor(PDF_WARNA.abuTeks[0], PDF_WARNA.abuTeks[1], PDF_WARNA.abuTeks[2]);
-  doc.text(bodyLines, x, y + 6.5);
-  y += bodyLines.length * lineH + 8;
+  doc.text(bodyLines, x, y + 6);
+  y += bodyLines.length * lineH + 5;
   doc.setTextColor(0, 0, 0);
   return y;
 }
 
-// Hitung tinggi kartu 1 sesi SEBELUM digambar (dipakai untuk cek page-break
-// terlebih dahulu). lineH SENGAJA dibuat sedikit lebih longgar dari jarak
-// baris asli jsPDF supaya tidak pernah terjadi teks tumpah keluar kartu.
-function _pdfUkurKartuSesi(doc, item, innerW) {
-  doc.setFont(undefined, 'normal');
-  doc.setFontSize(8.8);
-  var lineH = 11.5;
-  var materiLines = doc.splitTextToSize(item.ringkasan || '-', innerW);
-  var catatanLines = item.catatan ? doc.splitTextToSize(item.catatan, innerW) : [];
-  var tidakHadirDetail = item.tidak_hadir_detail || [];
+// ── Ukur & gambar 1 BARIS sesi (penuh lebar, dalam = kiri 70% / kanan 30%) ──
 
-  var h = 12; // padding atas
-  h += 14 + 8; // baris chip jam/kelas/mapel + gap
-  h += 11 + materiLines.length * lineH + 8; // blok "MATERI / KEGIATAN"
-  if (catatanLines.length) h += 11 + catatanLines.length * lineH + 8; // blok "CATATAN"
-  h += 9 + 4 + 14 + 8; // label "KEHADIRAN SISWA" + gap + baris chip kehadiran + gap
-  if (tidakHadirDetail.length) {
-    h += 8 + tidakHadirDetail.length * 11 + 8; // kotak "siswa tidak hadir"
-  }
-  h += 12; // padding bawah
-  return { height: h, lineH: lineH, materiLines: materiLines, catatanLines: catatanLines, tidakHadirDetail: tidakHadirDetail };
+function _pdfUkurBarisSesi(doc, item, lebarKiri, lebarKanan) {
+  var lineH = 10.3;
+  doc.setFont(undefined, 'normal'); doc.setFontSize(8.3);
+  var materiLines = doc.splitTextToSize(item.ringkasan || '-', lebarKiri);
+  var catatanLines = item.catatan ? doc.splitTextToSize(item.catatan, lebarKiri) : [];
+
+  // Kolom kiri: label+isi materi, lalu (opsional) label+isi catatan
+  var tinggiKiri = 9.5 + materiLines.length * lineH + 5;
+  if (catatanLines.length) tinggiKiri += 9.5 + catatanLines.length * lineH + 5;
+
+  // Kolom kanan: label + baris status kehadiran (stack) + "dari total N" + tidak hadir
+  var kh = item.kehadiran;
+  var jumlahStatus = 1; // Hadir selalu ditampilkan
+  ['sakit', 'izin', 'alpa'].forEach(function(k) { if (kh[k] > 0) jumlahStatus++; });
+  var tidakHadirDetail = item.tidak_hadir_detail || [];
+  doc.setFontSize(7.2);
+  var tidakHadirLineCount = 0;
+  var tidakHadirWrapped = tidakHadirDetail.map(function(t) {
+    var teks = 'NIS ' + t.nis + ' — ' + t.nama + ' (' + t.status + ')';
+    var wrapped = doc.splitTextToSize(teks, lebarKanan);
+    tidakHadirLineCount += wrapped.length;
+    return wrapped;
+  });
+
+  var tinggiKanan = 9.5 + jumlahStatus * 11.5 + 4 + 9; // label + status + gap + "dari total N siswa"
+  if (tidakHadirDetail.length) tinggiKanan += 4 + tidakHadirLineCount * 9.5;
+
+  var tinggiIsi = Math.max(tinggiKiri, tinggiKanan);
+  var chipRowH = 12 + 6;
+  var padAtasBawah = 8 * 2;
+  var height = padAtasBawah + chipRowH + tinggiIsi;
+
+  return {
+    height: height, lineH: lineH, materiLines: materiLines, catatanLines: catatanLines,
+    jumlahStatus: jumlahStatus, tidakHadirWrapped: tidakHadirWrapped,
+  };
 }
 
-function _pdfGambarKartuSesi(doc, x, y, width, item, chip2Label, uk) {
-  var pad = 12;
+function _pdfGambarBarisSesi(doc, x, y, width, item, chip2Label, uk) {
+  var pad = 8, colGap = 10;
   var innerW = width - pad * 2;
+  var lebarKiri = Math.round((innerW - colGap) * 0.7);
+  var lebarKanan = innerW - colGap - lebarKiri;
 
-  doc.setFillColor(250, 250, 252);
+  doc.setFillColor(253, 253, 254);
   doc.setDrawColor(PDF_WARNA.abuBorder[0], PDF_WARNA.abuBorder[1], PDF_WARNA.abuBorder[2]);
-  doc.roundedRect(x, y, width, uk.height, 6, 6, 'FD');
+  doc.roundedRect(x, y, width, uk.height, 4, 4, 'FD');
 
   var cx = x + pad;
   var cy = y + pad;
 
-  // Baris chip: jam · kelas/guru · mapel
+  // Baris chip: jam · kelas/guru · mapel (penuh lebar, di atas 2 kolom)
   var w1 = _pdfChip(doc, cx, cy, item.jam_label || '-', PDF_WARNA.navy, [255, 255, 255]);
-  var w2 = _pdfChip(doc, cx + w1 + 6, cy, chip2Label || '-', PDF_WARNA.biruBg, PDF_WARNA.biru);
-  _pdfChip(doc, cx + w1 + 6 + w2 + 6, cy, item.nama_mapel || '-', PDF_WARNA.abuBg, PDF_WARNA.abuTeks);
-  cy += 14 + 8;
+  var w2 = _pdfChip(doc, cx + w1 + 5, cy, chip2Label || '-', PDF_WARNA.biruBg, PDF_WARNA.biru);
+  _pdfChip(doc, cx + w1 + 5 + w2 + 5, cy, item.nama_mapel || '-', PDF_WARNA.abuBg, PDF_WARNA.abuTeks);
+  var yIsi = cy + 12 + 6;
 
-  cy = _pdfBlokLabel(doc, cx, cy, 'MATERI / KEGIATAN', uk.materiLines, uk.lineH);
-  if (uk.catatanLines.length) cy = _pdfBlokLabel(doc, cx, cy, 'CATATAN', uk.catatanLines, uk.lineH);
+  var xKiri = cx;
+  var xKanan = cx + lebarKiri + colGap;
 
-  // Kehadiran
-  doc.setFont(undefined, 'bold'); doc.setFontSize(7.2);
+  // Kolom kiri (70%): Materi + Catatan
+  var yKiri = _pdfBlokLabel(doc, xKiri, yIsi, 'MATERI / KEGIATAN', uk.materiLines, uk.lineH);
+  if (uk.catatanLines.length) _pdfBlokLabel(doc, xKiri, yKiri, 'CATATAN', uk.catatanLines, uk.lineH);
+
+  // Garis pemisah tipis antar kolom
+  doc.setDrawColor(PDF_WARNA.abuBorder[0], PDF_WARNA.abuBorder[1], PDF_WARNA.abuBorder[2]);
+  doc.line(xKanan - colGap / 2, yIsi - 2, xKanan - colGap / 2, y + uk.height - pad);
+
+  // Kolom kanan (30%): Kehadiran
+  var yKanan = yIsi;
+  doc.setFont(undefined, 'bold'); doc.setFontSize(6.8);
   doc.setTextColor(PDF_WARNA.abuMuted[0], PDF_WARNA.abuMuted[1], PDF_WARNA.abuMuted[2]);
-  doc.text('KEHADIRAN SISWA', cx, cy + 7);
-  cy += 13;
+  doc.text('KEHADIRAN', xKanan, yKanan + 6.5);
+  yKanan += 11;
+
   var kh = item.kehadiran;
-  var chipX = cx;
   [['hadir', kh.hadir + ' Hadir'], ['sakit', kh.sakit + ' Sakit'], ['izin', kh.izin + ' Izin'], ['alpa', kh.alpa + ' Alpa']]
     .forEach(function(pair) {
-      if (pair[0] !== 'hadir' && kh[pair[0]] === 0) return; // hemat ruang: sembunyikan yang 0 (selain Hadir)
-      var w = _pdfChip(doc, chipX, cy, pair[1], _pdfWarnaKehadiran(pair[0]).bg, _pdfWarnaKehadiran(pair[0]).fg, 7.3);
-      chipX += w + 5;
+      if (pair[0] !== 'hadir' && kh[pair[0]] === 0) return;
+      _pdfChip(doc, xKanan, yKanan, pair[1], _pdfWarnaKehadiran(pair[0]).bg, _pdfWarnaKehadiran(pair[0]).fg, 7);
+      yKanan += 11.5;
     });
-  doc.setFont(undefined, 'normal'); doc.setFontSize(7.5);
+  yKanan += 3;
+  doc.setFont(undefined, 'normal'); doc.setFontSize(7);
   doc.setTextColor(PDF_WARNA.abuMuted[0], PDF_WARNA.abuMuted[1], PDF_WARNA.abuMuted[2]);
-  doc.text('dari total ' + kh.total + ' siswa', chipX + 4, cy + 10);
+  doc.text('dari total ' + kh.total + ' siswa', xKanan, yKanan + 5);
   doc.setTextColor(0, 0, 0);
-  cy += 14 + 8;
+  yKanan += 9;
 
-  // Detail siswa tidak hadir: NIS + Nama + Status, satu baris per siswa
-  if (uk.tidakHadirDetail.length) {
-    var boxH = 8 + uk.tidakHadirDetail.length * 11 + 4;
-    doc.setFillColor(PDF_WARNA.merahBg[0], PDF_WARNA.merahBg[1], PDF_WARNA.merahBg[2]);
-    doc.roundedRect(cx, cy, innerW, boxH, 4, 4, 'F');
-    doc.setFontSize(7.6);
-    var ty = cy + 8 + 5.5;
-    uk.tidakHadirDetail.forEach(function(t) {
-      doc.setFont(undefined, 'bold');
+  if (uk.tidakHadirWrapped.length) {
+    yKanan += 4;
+    doc.setFontSize(7.2);
+    uk.tidakHadirWrapped.forEach(function(wrapped) {
       doc.setTextColor(PDF_WARNA.merah[0], PDF_WARNA.merah[1], PDF_WARNA.merah[2]);
-      doc.text('NIS ' + t.nis, cx + 8, ty);
-      var lebarNis = doc.getTextWidth('NIS ' + t.nis);
-      doc.setFont(undefined, 'normal');
-      doc.setTextColor(PDF_WARNA.abuTeks[0], PDF_WARNA.abuTeks[1], PDF_WARNA.abuTeks[2]);
-      doc.text('— ' + t.nama + ' (' + t.status + ')', cx + 8 + lebarNis + 4, ty);
-      ty += 11;
+      doc.text(wrapped, xKanan, yKanan + 5.5);
+      yKanan += wrapped.length * 9.5;
     });
     doc.setTextColor(0, 0, 0);
   }
@@ -657,12 +707,14 @@ function _pdfKelompokkanPerHari(items) {
 // Mesin utama, dipakai bersama oleh buildRekapPdfGuru & buildRekapPdfKelas.
 // opts: { data, judul, pihakLabel, pihakNama, chip2Getter, namaFile }
 function _bangunRekapPdfKartu(opts) {
-  var doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+  var doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
   var namaSekolah = (appConfig && appConfig.nama_sekolah) ? appConfig.nama_sekolah : 'SMP Muhammadiyah 2 Cilacap';
   var pageW = doc.internal.pageSize.getWidth();
   var pageH = doc.internal.pageSize.getHeight();
-  var marginX = 32, marginTop = 28, marginBottom = 36;
+  var marginX = 26, marginTop = 24, marginBottom = 30; // margin sempit
   var contentW = pageW - marginX * 2;
+  var lebarKiri = Math.round((contentW - 16 - 10) * 0.7);
+  var lebarKanan = (contentW - 16 - 10) - lebarKiri;
 
   var data = opts.data;
   var items = data.items || [];
@@ -678,8 +730,8 @@ function _bangunRekapPdfKartu(opts) {
   var kpis = [
     { label: 'Total Sesi', value: items.length },
     { label: 'Jumlah Hari', value: Object.keys(hariSet).length },
-    { label: 'Total Jam Pelajaran', value: totalJp + ' JP' },
-    { label: 'Rata-rata Kehadiran', value: sumTotal > 0 ? Math.round((sumHadir / sumTotal) * 100) + '%' : '-' },
+    { label: 'Total JP', value: totalJp },
+    { label: 'Rata-rata Hadir', value: sumTotal > 0 ? Math.round((sumHadir / sumTotal) * 100) + '%' : '-' },
   ];
 
   var y = marginTop;
@@ -691,9 +743,9 @@ function _bangunRekapPdfKartu(opts) {
     if (y + tinggi > pageH - marginBottom) {
       doc.addPage();
       y = marginTop;
-      doc.setFont(undefined, 'bold'); doc.setFontSize(9.5);
+      doc.setFont(undefined, 'bold'); doc.setFontSize(8.5);
       doc.setTextColor(PDF_WARNA.abuMuted[0], PDF_WARNA.abuMuted[1], PDF_WARNA.abuMuted[2]);
-      doc.text(namaSekolah + ' — ' + opts.judul + ' (lanjutan)', marginX, y);
+      doc.text(namaSekolah + ' — ' + opts.judul + ' (lanjutan)', marginX, y + 6);
       doc.setTextColor(0, 0, 0);
       doc.setFont(undefined, 'normal');
       y += 16;
@@ -703,27 +755,28 @@ function _bangunRekapPdfKartu(opts) {
   var groups = _pdfKelompokkanPerHari(items);
 
   if (groups.length === 0) {
-    pastikanRuang(40);
+    pastikanRuang(36);
     doc.setFillColor(PDF_WARNA.abuBg[0], PDF_WARNA.abuBg[1], PDF_WARNA.abuBg[2]);
-    doc.roundedRect(marginX, y, contentW, 40, 6, 6, 'F');
-    doc.setFont(undefined, 'normal'); doc.setFontSize(9.5);
+    doc.roundedRect(marginX, y, contentW, 36, 5, 5, 'F');
+    doc.setFont(undefined, 'normal'); doc.setFontSize(9);
     doc.setTextColor(PDF_WARNA.abuMuted[0], PDF_WARNA.abuMuted[1], PDF_WARNA.abuMuted[2]);
-    doc.text('Tidak ada jurnal yang tercatat pada periode ini.', marginX + 14, y + 24);
+    doc.text('Tidak ada jurnal yang tercatat pada periode ini.', marginX + 12, y + 21);
     doc.setTextColor(0, 0, 0);
-    y += 40;
+    y += 36;
   } else {
     groups.forEach(function(g) {
-      var jpHari = g.items.reduce(function(s, it) { return s + (it.jam_ids ? it.jam_ids.length : 0); }, 0);
-      pastikanRuang(24 + 8 + 90); // header hari + ruang minimal 1 kartu
-      y = _pdfHeaderHari(doc, marginX, y, contentW, g.hari, fmtTanggalIndo(g.tanggal), g.items.length, jpHari);
+      // Header hari tidak boleh jadi baris terakhir sendirian di bawah halaman
+      // tanpa ruang untuk minimal 1 baris sesi setelahnya.
+      pastikanRuang(20 + 6 + 60);
+      y = _pdfHeaderHari(doc, marginX, y, contentW, g.hari, fmtTanggalIndo(g.tanggal), g.items.length);
 
       g.items.forEach(function(it) {
-        var uk = _pdfUkurKartuSesi(doc, it, contentW - 24);
-        pastikanRuang(uk.height + 10);
-        _pdfGambarKartuSesi(doc, marginX, y, contentW, it, opts.chip2Getter(it), uk);
-        y += uk.height + 10;
+        var uk = _pdfUkurBarisSesi(doc, it, lebarKiri, lebarKanan);
+        pastikanRuang(uk.height + 6);
+        _pdfGambarBarisSesi(doc, marginX, y, contentW, it, opts.chip2Getter(it), uk);
+        y += uk.height + 6;
       });
-      y += 6;
+      y += 4;
     });
   }
 
@@ -737,10 +790,10 @@ function _rekapPdfBeriNomorHalaman(doc) {
   var pageH = doc.internal.pageSize.getHeight();
   for (var i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     doc.setTextColor(120);
-    doc.text('Halaman ' + i + ' dari ' + pageCount, pageW - 110, pageH - 18);
-    doc.text('Dicetak: ' + fmtTanggalIndo(todayStr()), 40, pageH - 18);
+    doc.text('Halaman ' + i + ' dari ' + pageCount, pageW - 90, pageH - 14);
+    doc.text('Dicetak: ' + fmtTanggalIndo(todayStr()), 26, pageH - 14);
     doc.setTextColor(0);
   }
 }
@@ -1121,10 +1174,12 @@ function viewJurnalForm(params) {
     html += '</div></div>';
 
     html += '<div class="form-group"><span class="form-label">Ringkasan Kegiatan *</span>';
-    html += '<textarea id="ringkasan" rows="3" placeholder="Contoh: Algoritma dan flowchart dasar" required></textarea></div>';
+    html += '<textarea id="ringkasan" rows="3" maxlength="' + BATAS_KARAKTER_RINGKASAN + '" placeholder="Contoh: Algoritma dan flowchart dasar" required></textarea>';
+    html += charCounterHtml('ringkasan', BATAS_KARAKTER_RINGKASAN) + '</div>';
 
     html += '<div class="form-group"><span class="form-label">Catatan (opsional)</span>';
-    html += '<textarea id="catatan" rows="2" placeholder="Catatan tambahan..."></textarea></div>';
+    html += '<textarea id="catatan" rows="2" maxlength="' + BATAS_KARAKTER_CATATAN + '" placeholder="Catatan tambahan..."></textarea>';
+    html += charCounterHtml('catatan', BATAS_KARAKTER_CATATAN) + '</div>';
 
     html += '<div class="form-group"><span class="form-label">Kehadiran (' + siswa.length + ' siswa, default Hadir — klik yang tidak hadir)</span>';
     html += '<div id="siswaList">';
@@ -1144,6 +1199,8 @@ function viewJurnalForm(params) {
     bindJamCheckboxes();
     bindStatusButtons();
     bindSimpanJurnal(blok);
+    bindCharCounter('ringkasan', BATAS_KARAKTER_RINGKASAN);
+    bindCharCounter('catatan', BATAS_KARAKTER_CATATAN);
   });
 }
 
@@ -1327,10 +1384,12 @@ function viewJurnalEdit(params) {
     html += '<div style="font-size:11px;color:var(--gray-400);margin-top:6px">ℹ Tanggal, kelas, mapel, dan jam tidak bisa diubah. Buat jurnal baru jika salah sesi.</div></div>';
 
     html += '<div class="form-group"><span class="form-label">Ringkasan Kegiatan *</span>';
-    html += '<textarea id="ringkasan" rows="3" required>' + esc(j.ringkasan) + '</textarea></div>';
+    html += '<textarea id="ringkasan" rows="3" maxlength="' + BATAS_KARAKTER_RINGKASAN + '" required>' + esc(j.ringkasan) + '</textarea>';
+    html += charCounterHtml('ringkasan', BATAS_KARAKTER_RINGKASAN) + '</div>';
 
     html += '<div class="form-group"><span class="form-label">Catatan (opsional)</span>';
-    html += '<textarea id="catatan" rows="2">' + esc(j.catatan || '') + '</textarea></div>';
+    html += '<textarea id="catatan" rows="2" maxlength="' + BATAS_KARAKTER_CATATAN + '">' + esc(j.catatan || '') + '</textarea>';
+    html += charCounterHtml('catatan', BATAS_KARAKTER_CATATAN) + '</div>';
 
     html += '<div class="form-group"><span class="form-label">Kehadiran (' + siswa.length + ' siswa)</span>';
     html += '<div id="siswaList">';
@@ -1351,6 +1410,8 @@ function viewJurnalEdit(params) {
 
     bindStatusButtons();
     bindUpdateJurnal(j.jurnal_id);
+    bindCharCounter('ringkasan', BATAS_KARAKTER_RINGKASAN);
+    bindCharCounter('catatan', BATAS_KARAKTER_CATATAN);
   });
 }
 
