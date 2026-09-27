@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Prototipe Layout PDF — Rekap Jurnal Mingguan (Portrait A4)</title>
+<style>
+  :root {
+    --navy: #0f172a;
+    --navy-soft: #1e293b;
+    --biru: #2563eb;
+    --biru-bg: #dbeafe;
+    --abu-bg: #f8fafc;
+    --abu-border: #e2e8f0;
+    --abu-teks: #334155;
+    --abu-muted: #64748b;
+    --hijau: #047857;   --hijau-bg: #d1fae5;
+    --amber: #b45309;   --amber-bg: #fef3c7;
+    --indigo: #4338ca;  --indigo-bg: #e0e7ff;
+    --merah: #be123c;   --merah-bg: #ffe4e6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+    background: #525659;
+    margin: 0;
+    padding: 20px 0 60px;
+  }
+
+  /* ── Panel kontrol (HANYA tampil di layar, hilang saat print) ── */
+  .panel {
+    max-width: 210mm;
+    margin: 0 auto 16px;
+    background: #fff;
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: #333;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  }
+  .panel h1 { font-size: 15px; margin: 0 0 6px; }
+  .panel p { margin: 4px 0; line-height: 1.5; }
+  .panel .catatan { background: #fffbeb; border-left: 3px solid #d97706; padding: 8px 10px; margin-top: 8px; border-radius: 4px; }
+  .panel button {
+    background: var(--biru); color: #fff; border: none; padding: 8px 16px;
+    border-radius: 6px; font-size: 13px; cursor: pointer; margin-right: 8px; margin-top: 8px;
+  }
+  .panel button.aktif { background: var(--navy); }
+  .panel .meta { font-size: 12px; color: #666; margin-top: 6px; }
+
+  /* ── "Kertas" A4 ── */
+  .page {
+    width: 210mm;
+    height: 297mm;
+    padding: 12mm;
+    margin: 0 auto 14px;
+    background: #fff;
+    box-shadow: 0 3px 14px rgba(0,0,0,.35);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Header dokumen — HANYA di halaman pertama, rata tengah */
+  .doc-header {
+    background: var(--navy);
+    color: #fff;
+    border-radius: 6px;
+    padding: 8mm 6mm;
+    text-align: center;
+    margin-bottom: 5mm;
+  }
+  .doc-header .judul { font-size: 5mm; font-weight: 700; margin-bottom: 2mm; }
+  .doc-header .sekolah { font-size: 3.2mm; color: #cbd5e1; margin-bottom: 1.5mm; }
+  .doc-header .ringkasan { font-size: 2.9mm; color: #e2e8f0; }
+
+  /* Band header hari — full width, rata kiri (bukan bagian dari dokumen judul) */
+  .hari-header {
+    background: var(--navy-soft);
+    color: #fff;
+    padding: 2.2mm 3mm;
+    font-size: 3.1mm;
+    font-weight: 700;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3mm;
+    border-radius: 2px;
+  }
+  .hari-header .kanan { font-weight: 400; font-size: 2.7mm; color: #cbd5e1; }
+
+  /* Grid 2 kolom */
+  .grid-row {
+    display: flex;
+    gap: 3.5mm;
+    margin-bottom: 3.5mm;
+  }
+  .sesi-cell {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--abu-border);
+    border-radius: 5px;
+    background: #fdfdfe;
+    padding: 3mm;
+    display: flex;
+    flex-direction: column;
+  }
+  .sesi-cell.kosong { border: none; background: transparent; }
+
+  .chip-row { display: flex; flex-wrap: wrap; gap: 1.3mm; margin-bottom: 2mm; }
+  .chip {
+    display: inline-block;
+    font-size: 2.5mm;
+    font-weight: 700;
+    padding: 0.8mm 1.8mm;
+    border-radius: 2.5mm;
+    white-space: nowrap;
+  }
+  .chip-navy { background: var(--navy); color: #fff; }
+  .chip-biru { background: var(--biru-bg); color: var(--biru); }
+  .chip-abu { background: var(--abu-bg); color: var(--abu-teks); }
+  .chip-hijau { background: var(--hijau-bg); color: var(--hijau); }
+  .chip-amber { background: var(--amber-bg); color: var(--amber); }
+  .chip-indigo { background: var(--indigo-bg); color: var(--indigo); }
+  .chip-merah { background: var(--merah-bg); color: var(--merah); }
+
+  .blok-label {
+    font-size: 2.15mm;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--abu-muted);
+    letter-spacing: 0.2px;
+    margin-bottom: 0.6mm;
+  }
+  .blok-isi {
+    font-size: 2.75mm;
+    line-height: 1.4;
+    color: var(--abu-teks);
+    margin-bottom: 2mm;
+  }
+  .blok-isi.kecil { font-size: 2.6mm; }
+
+  .kehadiran-row { display: flex; align-items: center; flex-wrap: wrap; gap: 1.3mm; margin-top: auto; padding-top: 1.5mm; }
+  .kehadiran-row .mut { font-size: 2.4mm; color: var(--abu-muted); margin-left: 1mm; }
+
+  .tidak-hadir-box {
+    background: var(--merah-bg);
+    border-radius: 3px;
+    padding: 1.5mm 2mm;
+    margin-top: 1.8mm;
+    font-size: 2.4mm;
+    line-height: 1.55;
+  }
+  .tidak-hadir-box b { color: var(--merah); }
+  .tidak-hadir-box span { color: var(--abu-teks); }
+
+  .footer {
+    margin-top: auto;
+    padding-top: 2mm;
+    border-top: 1px solid var(--abu-border);
+    display: flex;
+    justify-content: space-between;
+    font-size: 2.3mm;
+    color: #94a3b8;
+  }
+
+  .char-badge {
+    position: absolute;
+    top: 1mm; right: 1mm;
+    font-size: 2mm;
+    background: #fef08a;
+    color: #713f12;
+    padding: 0.3mm 1mm;
+    border-radius: 2mm;
+    opacity: .85;
+  }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .panel { display: none; }
+    .page {
+      box-shadow: none;
+      margin: 0;
+      page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    .char-badge { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>🧪 Prototipe Layout PDF Rekap Mingguan — Portrait A4, margin sempit</h1>
+  <p>Ini <b>BUKAN PDF asli</b> — ini contoh tampilan HTML untuk divalidasi dulu sebelum saya terapkan ke generator PDF (jsPDF) yang sesungguhnya. Data di bawah adalah <b>data dummy</b>.</p>
+  <p>Cara cek: buka Print Preview (Ctrl/Cmd+P) untuk melihat persis bagaimana hasilnya kalau dicetak/disimpan sebagai PDF (margin, ukuran font, dan potongan halaman akan mengikuti tampilan ini).</p>
+  <button id="btnKelas" class="aktif">Contoh: Rekap Jurnal KELAS</button>
+  <button id="btnGuru">Contoh: Rekap Jurnal GURU</button>
+  <div class="catatan">
+    <b>Aturan grid yang dipakai</b> (sesuai contoh yang diberikan): tiap sesi jadi 1 kartu, 2 kartu berdampingan per baris, target 4 kartu (2 baris) per halaman. Kalau 1 hari sesinya ganjil, kartu terakhir hari itu berdiri sendiri (kartu pasangannya kosong) dan header hari berikutnya TIDAK pernah nempel di baris yang sama dengan sisa kartu hari sebelumnya — ganti baris baru dulu. Materi dibatasi maks <b>700 karakter</b>, catatan maks <b>200 karakter</b> (badge kuning di pojok tiap kartu = jumlah karakter dummy di kartu itu, untuk bantu Anda menilai apakah ukuran fontnya pas di batas maksimal — badge ini tidak akan ada di PDF asli).
+  </div>
+  <div class="meta" id="infoHalaman"></div>
+</div>
+
+<div id="hasil"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// DATA DUMMY — meniru struktur field yang SUDAH ADA di backend
+// (jam_label, nama_kelas/nama_guru, nama_mapel, ringkasan, catatan,
+// kehadiran, tidak_hadir_detail). Tidak ada perubahan struktur data
+// nyata — ini cuma contoh angka untuk uji tampilan.
+// ════════════════════════════════════════════════════════════════
+
+var MATERI_PANJANG = "Pembelajaran hari ini membahas materi Sistem Persamaan Linear Dua Variabel (SPLDV). Kegiatan diawali dengan apersepsi mengaitkan konsep aljabar dasar yang sudah dipelajari sebelumnya, dilanjutkan penjelasan konsep melalui contoh kasus jual-beli di pasar untuk membangun pemahaman kontekstual siswa. Siswa dibagi menjadi beberapa kelompok kecil untuk berdiskusi menyelesaikan soal cerita menggunakan metode substitusi dan eliminasi secara bergantian. Setiap kelompok mempresentasikan hasil diskusinya di depan kelas, dilanjutkan sesi tanya jawab dan penguatan konsep oleh guru. Di akhir jam pelajaran, siswa mengerjakan kuis singkat berisi 5 soal sebagai evaluasi, hasilnya dibahas pertemuan berikutnya.";
+var CATATAN_PANJANG = "Ada beberapa siswa yang masih kesulitan membedakan metode substitusi dan eliminasi, perlu pendampingan lebih lanjut pada jam tambahan minggu depan sebelum ulangan harian.";
+
+console.log('Panjang MATERI_PANJANG:', MATERI_PANJANG.length, '(maks 700)');
+console.log('Panjang CATATAN_PANJANG:', CATATAN_PANJANG.length, '(maks 200)');
+
+// sessions per hari — field "pihak2" = nama guru (mode kelas) ATAU nama kelas (mode guru), diisi saat render
+var DATA_HARI = [
+  {
+    hari: 'SENIN', tanggal: '14 September 2026',
+    sesi: [
+      { jam: 'Jam 1', pihak2_kelas: 'Bu Siti Aminah, S.Pd.', pihak2_guru: 'VII A', mapel: 'Matematika',
+        materi: MATERI_PANJANG, catatan: CATATAN_PANJANG,
+        kehadiran: { hadir: 28, sakit: 1, izin: 1, alpa: 0, total: 30 },
+        tidakHadir: [ { nis: '2409010021', nama: 'Ahmad Fauzi Ramadhan', status: 'Sakit' }, { nis: '2409010045', nama: 'Bunga Citra Lestari', status: 'Izin' } ] },
+      { jam: 'Jam 2-3', pihak2_kelas: 'Pak Budi Santoso, S.Pd.', pihak2_guru: 'VII A', mapel: 'IPA',
+        materi: 'Praktikum sederhana tentang perubahan wujud zat (mencair, membeku, menguap) menggunakan es batu dan lilin. Siswa mengamati dan mencatat hasil di LKPD.',
+        catatan: '', kehadiran: { hadir: 30, sakit: 0, izin: 0, alpa: 0, total: 30 }, tidakHadir: [] },
+      { jam: 'Jam 5', pihak2_kelas: 'Bu Dewi Kartika, S.Pd.', pihak2_guru: 'VII A', mapel: 'Bahasa Indonesia',
+        materi: 'Menulis teks deskripsi tentang tempat wisata favorit, dilanjutkan sesi saling menukar tulisan untuk diberi masukan oleh teman sebangku.',
+        catatan: 'Beberapa siswa masih perlu bimbingan penggunaan tanda baca.', kehadiran: { hadir: 29, sakit: 0, izin: 0, alpa: 1, total: 30 },
+        tidakHadir: [ { nis: '2409010033', nama: 'Candra Wijaya', status: 'Alpa' } ] },
+      { jam: 'Jam 6', pihak2_kelas: 'Pak Eko Prasetyo, S.Pd.', pihak2_guru: 'VII A', mapel: 'PJOK',
+        materi: 'Latihan dasar permainan bola voli: passing bawah dan passing atas berpasangan.',
+        catatan: '', kehadiran: { hadir: 30, sakit: 0, izin: 0, alpa: 0, total: 30 }, tidakHadir: [] },
+      { jam: 'Jam 7-8', pihak2_kelas: 'Bu Fitriani, S.Pd.', pihak2_guru: 'VII A', mapel: 'IPS',
+        materi: 'Diskusi kelompok tentang kondisi geografis Indonesia dan pengaruhnya terhadap kehidupan sosial-ekonomi masyarakat sekitar.',
+        catatan: '', kehadiran: { hadir: 27, sakit: 2, izin: 0, alpa: 1, total: 30 },
+        tidakHadir: [ { nis: '2409010012', nama: 'Dewi Anggraini', status: 'Sakit' }, { nis: '2409010019', nama: 'Fajar Nugroho', status: 'Sakit' }, { nis: '2409010028', nama: 'Gilang Ramadhan', status: 'Alpa' } ] },
+    ],
+  },
+  {
+    hari: 'SELASA', tanggal: '15 September 2026',
+    sesi: [
+      { jam: 'Jam 1', pihak2_kelas: 'Bu Siti Aminah, S.Pd.', pihak2_guru: 'VII A', mapel: 'Matematika', materi: 'Latihan soal SPLDV metode grafik.', catatan: '', kehadiran: { hadir: 30, sakit: 0, izin: 0, alpa: 0, total: 30 }, tidakHadir: [] },
+      { jam: 'Jam 2', pihak2_kelas: 'Pak Hendra Gunawan, S.Pd.', pihak2_guru: 'VII A', mapel: 'PKn', materi: 'Diskusi tentang norma dan aturan dalam kehidupan bermasyarakat.', catatan: '', kehadiran: { hadir: 30, sakit: 0, izin: 0, alpa: 0, total: 30 }, tidakHadir: [] },
+      { jam: 'Jam 3', pihak2_kelas: 'Bu Dewi Kartika, S.Pd.', pihak2_guru: 'VII A', mapel: 'Bahasa Indonesia', materi: 'Melanjutkan penulisan teks deskripsi, revisi berdasarkan masukan teman.', catatan: '', kehadiran: { hadir: 29, sakit: 1, izin: 0, alpa: 0, total: 30 }, tidakHadir: [ { nis: '2409010033', nama: 'Candra Wijaya', status: 'Sakit' } ] },
+      { jam: 'Jam 4-5', pihak2_kelas: 'Bu Ratna Sari, S.Pd.', pihak2_guru: 'VII A', mapel: 'Bahasa Inggris', materi: 'Latihan speaking dengan tema "Describing My Family" secara berpasangan di depan kelas.', catatan: 'Pelafalan sudah cukup baik, perlu ditingkatkan rasa percaya diri.', kehadiran: { hadir: 30, sakit: 0, izin: 0, alpa: 0, total: 30 }, tidakHadir: [] },
+      { jam: 'Jam 6', pihak2_kelas: 'Pak Budi Santoso, S.Pd.', pihak2_guru: 'VII A', mapel: 'IPA', materi: 'Melanjutkan praktikum perubahan wujud zat, presentasi hasil pengamatan kelompok.', catatan: '', kehadiran: { hadir: 30, sakit: 0, izin: 0, alpa: 0, total: 30 }, tidakHadir: [] },
+      { jam: 'Jam 7-8', pihak2_kelas: 'Bu Fitriani, S.Pd.', pihak2_guru: 'VII A', mapel: 'IPS', materi: 'Presentasi kelompok hasil diskusi kondisi geografis Indonesia.', catatan: '', kehadiran: { hadir: 28, sakit: 1, izin: 1, alpa: 0, total: 30 }, tidakHadir: [ { nis: '2409010012', nama: 'Dewi Anggraini', status: 'Sakit' }, { nis: '2409010045', nama: 'Bunga Citra Lestari', status: 'Izin' } ] },
+    ],
+  },
+  {
+    hari: 'RABU', tanggal: '16 September 2026',
+    sesi: [
+      { jam: 'Jam 1-2', pihak2_kelas: 'Bu Siti Aminah, S.Pd.', pihak2_guru: 'VII A', mapel: 'Matematika', materi: 'Ulangan harian SPLDV (10 soal uraian).', catatan: 'Nilai rata-rata kelas cukup baik, akan dibahas minggu depan.', kehadiran: { hadir: 30, sakit: 0, izin: 0, alpa: 0, total: 30 }, tidakHadir: [] },
+      { jam: 'Jam 3', pihak2_kelas: 'Pak Hendra Gunawan, S.Pd.', pihak2_guru: 'VII A', mapel: 'PKn', materi: 'Simulasi musyawarah kelas memilih ketua kelompok belajar.', catatan: '', kehadiran: { hadir: 30, sakit: 0, izin: 0, alpa: 0, total: 30 }, tidakHadir: [] },
+    ],
+  },
+];
+
+// ════════════════════════════════════════════════════════════════
+// ALGORITMA PAGINASI — inti dari rancangan layout ini:
+//  - Header hari SELALU baris sendiri (tidak pernah berbagi baris
+//    dengan sisa kartu hari sebelumnya)
+//  - Maks 2 baris kartu (4 kartu) per halaman
+//  - Halaman baru selalu mulai dari baris kosong (baris tidak pernah
+//    terpotong di tengah, lintas halaman)
+// ════════════════════════════════════════════════════════════════
+function paginate(hariList) {
+  var pages = [[]];
+  var curPage = pages[0];
+  var rowsOnPage = 0;
+  var pendingRow = null;
+
+  function newPage() { curPage = []; pages.push(curPage); rowsOnPage = 0; pendingRow = null; }
+  function closePendingRow() {
+    if (pendingRow) {
+      curPage.push(pendingRow);
+      rowsOnPage++;
+      pendingRow = null;
+      if (rowsOnPage >= 2) newPage();
+    }
+  }
+
+  hariList.forEach(function(hari) {
+    closePendingRow(); // header hari tidak boleh nempel baris sisa hari sebelumnya
+    if (rowsOnPage >= 2) newPage();
+    curPage.push({ tipe: 'header', hari: hari.hari, tanggal: hari.tanggal, jumlah: hari.sesi.length });
+
+    hari.sesi.forEach(function(sesi) {
+      if (!pendingRow) pendingRow = { tipe: 'kartu', sel: [sesi] };
+      else { pendingRow.sel.push(sesi); closePendingRow(); }
+    });
+  });
+  closePendingRow();
+  return pages;
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function kartuHtml(sesi, mode) {
+  if (!sesi) return '<div class="sesi-cell kosong"></div>';
+  var pihak2 = mode === 'guru' ? sesi.pihak2_guru : sesi.pihak2_kelas;
+  var totalKarakter = (sesi.materi || '').length + (sesi.catatan || '').length;
+
+  var html = '<div class="sesi-cell">';
+  html += '<span class="char-badge">' + totalKarakter + ' karakter</span>';
+  html += '<div class="chip-row">';
+  html += '<span class="chip chip-navy">' + esc(sesi.jam) + '</span>';
+  html += '<span class="chip chip-biru">' + esc(pihak2) + '</span>';
+  html += '<span class="chip chip-abu">' + esc(sesi.mapel) + '</span>';
+  html += '</div>';
+
+  html += '<div class="blok-label">Materi / Kegiatan</div>';
+  html += '<div class="blok-isi">' + esc(sesi.materi || '-') + '</div>';
+
+  if (sesi.catatan) {
+    html += '<div class="blok-label">Catatan</div>';
+    html += '<div class="blok-isi kecil">' + esc(sesi.catatan) + '</div>';
+  }
+
+  var kh = sesi.kehadiran;
+  html += '<div class="kehadiran-row">';
+  html += '<span class="chip chip-hijau">' + kh.hadir + ' Hadir</span>';
+  if (kh.sakit) html += '<span class="chip chip-amber">' + kh.sakit + ' Sakit</span>';
+  if (kh.izin) html += '<span class="chip chip-indigo">' + kh.izin + ' Izin</span>';
+  if (kh.alpa) html += '<span class="chip chip-merah">' + kh.alpa + ' Alpa</span>';
+  html += '<span class="mut">dari ' + kh.total + ' siswa</span>';
+  html += '</div>';
+
+  if (sesi.tidakHadir && sesi.tidakHadir.length) {
+    html += '<div class="tidak-hadir-box">';
+    sesi.tidakHadir.forEach(function(t) {
+      html += '<div><b>NIS ' + esc(t.nis) + '</b> <span>— ' + esc(t.nama) + ' (' + esc(t.status) + ')</span></div>';
+    });
+    html += '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function render(mode) {
+  var pages = paginate(DATA_HARI);
+  var namaSekolah = 'SMP Muhammadiyah 2 Cilacap';
+  var judul = mode === 'guru' ? 'Rekap Jurnal Guru Mingguan' : 'Rekap Jurnal Kelas Mingguan';
+  var ringkasanBaris = mode === 'guru'
+    ? 'Guru: Bu Siti Aminah, S.Pd.    ·    Periode: 14 – 19 September 2026'
+    : 'Kelas: VII A    ·    Periode: 14 – 19 September 2026';
+
+  var out = '';
+  pages.forEach(function(rows, pageIdx) {
+    out += '<div class="page">';
+    if (pageIdx === 0) {
+      out += '<div class="doc-header">';
+      out += '<div class="judul">' + esc(judul) + '</div>';
+      out += '<div class="sekolah">' + esc(namaSekolah) + '</div>';
+      out += '<div class="ringkasan">' + esc(ringkasanBaris) + '</div>';
+      out += '</div>';
+    }
+    rows.forEach(function(row) {
+      if (row.tipe === 'header') {
+        out += '<div class="hari-header"><span>' + esc(row.hari) + ' · ' + esc(row.tanggal) + '</span>'
+             + '<span class="kanan">' + row.jumlah + ' sesi</span></div>';
+      } else {
+        out += '<div class="grid-row">';
+        out += kartuHtml(row.sel[0], mode);
+        out += kartuHtml(row.sel[1] || null, mode);
+        out += '</div>';
+      }
+    });
+    out += '<div class="footer"><span>' + esc(namaSekolah) + '</span><span>Halaman ' + (pageIdx + 1) + ' dari ' + pages.length + '</span></div>';
+    out += '</div>';
+  });
+
+  document.getElementById('hasil').innerHTML = out;
+  document.getElementById('infoHalaman').textContent =
+    'Mode: ' + (mode === 'guru' ? 'Rekap Jurnal Guru' : 'Rekap Jurnal Kelas') + ' · Total halaman dummy: ' + pages.length +
+    ' · Total sesi: ' + DATA_HARI.reduce(function(s,h){return s+h.sesi.length;}, 0);
+}
+
+document.getElementById('btnKelas').addEventListener('click', function() {
+  this.classList.add('aktif');
+  document.getElementById('btnGuru').classList.remove('aktif');
+  render('kelas');
+});
+document.getElementById('btnGuru').addEventListener('click', function() {
+  this.classList.add('aktif');
+  document.getElementById('btnKelas').classList.remove('aktif');
+  render('guru');
+});
+
+render('kelas');
+</script>
+</body>
+</html>

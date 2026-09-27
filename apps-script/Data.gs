@@ -28,7 +28,7 @@ function actionGetConfig() {
     istirahat_setelah: (cfg.ISTIRAHAT_SETELAH || '3,6')
       .split(',').map(function(n) { return parseInt(n); }),
     batas_edit_hari: parseInt(cfg.BATAS_EDIT_HARI || 7),
-    izin_edit:       cfg.IZIN_EDIT_JURNAL === 'TRUE' || cfg.IZIN_EDIT_JURNAL === true,
+    izin_edit:       isAktif(cfg.IZIN_EDIT_JURNAL),
     // [BARU — arsitektur cache client-side, 2026-09-08] Naik otomatis lewat
     // trigger onEdit(e) tiap kali sheet master data (guru/kelas/siswa/mapel/
     // jadwal) diedit manual di Spreadsheet. Dipakai frontend (js/cache.js)
@@ -63,7 +63,7 @@ function actionUpdateConfig(body, session) {
 
 function actionGetGuru(session) {
   var rows = readSheet('04_GURU');
-  var aktif = rows.filter(function(r) { return String(r.aktif) === 'TRUE'; });
+  var aktif = rows.filter(function(r) { return isAktif(r.aktif); });
   return ok(aktif.map(function(g) {
     return { guru_id: g.guru_id, nip: g.nip, nama: g.nama, jk: g.jenis_kelamin };
   }));
@@ -102,7 +102,7 @@ function actionGetSiswa(params, session) {
   if (!kelasId) return err('kelas_id wajib');
 
   var siswa = filterBy('06_SISWA', 'kelas_id', kelasId)
-    .filter(function(s) { return String(s.aktif) === 'TRUE'; });
+    .filter(function(s) { return isAktif(s.aktif); });
 
   return ok(siswa.map(function(s) {
     return { nis: String(s.nis), nama: s.nama, kelas_id: s.kelas_id };
@@ -112,7 +112,7 @@ function actionGetSiswa(params, session) {
 // ── Mapel ─────────────────────────────────────────────────────
 
 function actionGetMapel(session) {
-  var rows = readSheet('07_MAPEL').filter(function(r) { return String(r.aktif) === 'TRUE'; });
+  var rows = readSheet('07_MAPEL').filter(function(r) { return isAktif(r.aktif); });
   return ok(rows.map(function(m) {
     return { mapel_id: m.mapel_id, kode: m.kode_mapel, nama: m.nama_mapel, kelompok: m.kelompok };
   }));
@@ -121,7 +121,7 @@ function actionGetMapel(session) {
 // ── Jam ───────────────────────────────────────────────────────
 
 function actionGetJam(session) {
-  var rows = readSheet('08_JAM').filter(function(r) { return String(r.aktif) === 'TRUE'; });
+  var rows = readSheet('08_JAM').filter(function(r) { return isAktif(r.aktif); });
   return ok(rows.map(function(j) {
     return { jam_id: j.jam_id, nomor: parseInt(j.nomor_jam), nama: j.nama_jam };
   }).sort(function(a, b) { return a.nomor - b.nomor; }));
@@ -165,7 +165,7 @@ function _jadwalGuru(guruId, hari, tanggal, session) {
     return String(j.tahun_id) === tahun
       && String(j.hari) === hari
       && String(j.guru_id) === String(guruId)
-      && String(j.aktif) === 'TRUE';
+      && isAktif(j.aktif);
   });
 
   // Filter jam sesuai maks hari (mis. Jumat cuma sampai jam 4)
@@ -293,7 +293,7 @@ function actionGetJadwalKelas(params, session) {
     return String(j.tahun_id) === tahun
       && String(j.hari) === hari
       && String(j.kelas_id) === String(kelasId)
-      && String(j.aktif) === 'TRUE'
+      && isAktif(j.aktif)
       && parseInt(String(j.jam_id).replace('J', '')) <= maxJam;
   });
 
@@ -312,7 +312,7 @@ function actionGetJadwalKelas(params, session) {
   var jurnalJamByJurnal = groupBy(readSheet('11_JURNAL_JAM'), 'jurnal_id');
 
   var siswa = filterBy('06_SISWA', 'kelas_id', kelasId)
-    .filter(function(s) { return String(s.aktif) === 'TRUE'; });
+    .filter(function(s) { return isAktif(s.aktif); });
   var siswaIdx = indexBy(siswa, 'nis');
 
   // Kehadiran (hanya berisi yang TIDAK hadir) — index by jurnal_id sekali jalan
@@ -419,7 +419,7 @@ function actionGetJadwalKelasPublik(params, session) {
     return String(j.tahun_id) === tahun
       && String(j.hari) === hari
       && String(j.kelas_id) === kelasId
-      && String(j.aktif) === 'TRUE'
+      && isAktif(j.aktif)
       && parseInt(String(j.jam_id).replace('J', '')) <= maxJam;
   });
 
@@ -541,16 +541,19 @@ function actionGetAllJurnal(params, session) {
  * seorang guru tanpa perlu buka Spreadsheet manual.
  */
 function actionGetJadwalPerGuru(params, session) {
-  if (!hasRole(session, ['ADMIN'])) return err('Akses ditolak', 403);
-
   var guruId = String(params.guru_id || '').trim();
   if (!guruId) return err('guru_id wajib');
+
+  // Diizinkan untuk: ADMIN (lihat jadwal guru manapun), ATAU guru yang
+  // login melihat jadwalnya SENDIRI (dipakai menu "Jadwal Saya").
+  var isSelf = String(session.guru_id || '') === guruId;
+  if (!hasRole(session, ['ADMIN']) && !isSelf) return err('Akses ditolak', 403);
 
   var tahun = configVal('TAHUN_AKTIF');
   var jadwalGuru = readSheet('09_JADWAL').filter(function(j) {
     return String(j.tahun_id) === tahun
       && String(j.guru_id) === guruId
-      && String(j.aktif) === 'TRUE';
+      && isAktif(j.aktif);
   });
 
   var kelasIdx = indexBy(readSheet('05_KELAS'), 'kelas_id');
@@ -589,6 +592,68 @@ function actionGetJadwalPerGuru(params, session) {
   return ok({
     guru_id: guruId,
     nama_guru: guru ? guru.nama : guruId,
+    jadwal_per_hari: result,
+  });
+}
+
+/**
+ * [BARU 2026-09-21] Jadwal 1 kelas SELAMA 1 MINGGU (Senin-Sabtu),
+ * dikelompokkan per hari — dipakai fitur Export Jadwal Kelas (PDF).
+ * Bentuk responsnya SENGAJA persis sama seperti actionGetJadwalPerGuru
+ * (jadwal_per_hari), cuma field "nama_kelas" diganti "nama_guru" per item
+ * (karena di sini kelas-nya sudah pasti 1, yang bervariasi per sesi adalah
+ * gurunya) — supaya kode PDF-nya bisa pakai pola grid yang sama persis.
+ * Tidak ada pembatasan akses (sama seperti actionGetJadwalKelasPublik yang
+ * sudah ada — jadwal kelas diperlakukan sebagai data non-sensitif di
+ * aplikasi ini, dipakai juga oleh halaman publik jadwal-publik.html).
+ */
+function actionGetJadwalPerKelas(params, session) {
+  var kelasId = String(params.kelas_id || '').trim();
+  if (!kelasId) return err('kelas_id wajib');
+
+  var tahun = configVal('TAHUN_AKTIF');
+  var jadwalKelas = readSheet('09_JADWAL').filter(function(j) {
+    return String(j.tahun_id) === tahun
+      && String(j.kelas_id) === kelasId
+      && isAktif(j.aktif);
+  });
+
+  var guruIdx = indexBy(readSheet('04_GURU'), 'guru_id');
+  var mapelIdx = indexBy(readSheet('07_MAPEL'), 'mapel_id');
+  var kelasInfo = findBy('05_KELAS', 'kelas_id', kelasId);
+
+  var hariUrutan = ['SENIN','SELASA','RABU','KAMIS','JUMAT','SABTU'];
+  var perHari = {};
+  hariUrutan.forEach(function(h) { perHari[h] = []; });
+
+  jadwalKelas.forEach(function(j) {
+    if (!perHari[j.hari]) perHari[j.hari] = [];
+    perHari[j.hari].push(j);
+  });
+
+  var result = hariUrutan.map(function(h) {
+    var blok = groupJadwalBlok(perHari[h] || []);
+    var items = blok.map(function(b) {
+      var g = guruIdx[String(b.guru_id)];
+      var m = mapelIdx[String(b.mapel_id)];
+      return {
+        guru_id:    b.guru_id,
+        nama_guru:  g ? g.nama : b.guru_id,
+        mapel_id:   b.mapel_id,
+        nama_mapel: m ? m.nama_mapel : b.mapel_id,
+        jam_ids:    b.jam_ids,
+        jam_label:  jamLabel(b.jam_ids),
+      };
+    });
+    items.sort(function(a, b) {
+      return parseInt(a.jam_ids[0].replace('J','')) - parseInt(b.jam_ids[0].replace('J',''));
+    });
+    return { hari: h, jadwal: items };
+  });
+
+  return ok({
+    kelas_id: kelasId,
+    nama_kelas: kelasInfo ? kelasInfo.nama_kelas : kelasId,
     jadwal_per_hari: result,
   });
 }

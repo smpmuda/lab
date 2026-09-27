@@ -1,6 +1,6 @@
 # Master Progress — Jurnal Mengajar
 **SMP Muhammadiyah 2 Cilacap**
-Terakhir diperbarui: 2026-09-17
+Terakhir diperbarui: 2026-09-22
 
 ---
 
@@ -958,6 +958,614 @@ di PDF & prompt.
 File yang diubah sesi ini: `apps-script/Jurnal.gs`, `apps-script/TestSuite.gs`,
 `frontend/js/app.js`. Tidak ada file lain yang disentuh.
 
+### 2026-09-18 — Batas karakter jurnal + PROTOTIPE layout PDF baru (BELUM diimplementasikan ke jsPDF)
+
+**Konfirmasi user:** update 17 Sept (fix NIS/nama + redesain kartu) sudah OK.
+User minta penyempurnaan lanjutan untuk PDF:
+1. PDF dibuat **Portrait A4, margin sempit** (sebelumnya landscape).
+2. Header dokumen (judul/sekolah/kelas-guru+periode) dibuat **rata tengah**
+   (sebelumnya rata kiri).
+3. Input **Ringkasan Kegiatan dibatasi maks 700 karakter**, **Catatan maks
+   200 karakter** — supaya tinggi kartu PDF bisa diperkirakan/konsisten.
+4. Layout PDF diubah total: bukan lagi kartu ditumpuk 1 kolom per hari,
+   tapi **grid 2 kolom, target 4 kartu (2 baris) per halaman**, dengan
+   aturan: header hari SELALU baris sendiri (tidak numpang di baris sisa
+   kartu hari sebelumnya), kartu terakhir suatu hari yang ganjil berdiri
+   sendiri (pasangannya kosong), dan halaman tidak pernah memotong 1 baris
+   kartu. User memberi contoh ASCII persis pola ini (SENIN 5 sesi → penuh
+   4 di hal.1, sisa 1 pindah ke hal.2 bareng header SELASA, dst).
+5. **User secara eksplisit minta prototipe HTML dulu dengan data dummy**
+   sebelum kode PDF asli (jsPDF) diubah — supaya tidak salah paham.
+
+**Sudah dikerjakan sesi ini (2 bagian, keduanya SELESAI & aman di-deploy):**
+
+**A. Batas karakter (frontend + backend) — SUDAH DIIMPLEMENTASI, siap deploy:**
+- `frontend/js/app.js`: konstanta `BATAS_KARAKTER_RINGKASAN=700`,
+  `BATAS_KARAKTER_CATATAN=200`; ditambahkan `maxlength` + counter
+  karakter live (`charCounterHtml`/`bindCharCounter`, warna berubah kalau
+  mendekati/mencapai batas) di KEDUA form (buat jurnal baru & edit jurnal),
+  total 4 titik textarea.
+- `apps-script/Jurnal.gs`: validasi cermin di backend (`actionCreateJurnal`
+  & `actionUpdateJurnal`) pakai konstanta yang sama — supaya panggilan API
+  langsung (bukan lewat UI) tidak bisa melewati batas ini. Ini PENTING
+  karena akurasi tinggi kartu PDF nanti bergantung pada asumsi batas ini
+  benar-benar ditegakkan, bukan cuma disarankan di frontend.
+- Status: lolos `node --check`, **belum dites submit form sungguhan di
+  browser**.
+
+**B. Prototipe HTML layout PDF baru — untuk DIVALIDASI USER, BELUM
+diterapkan ke generator PDF asli:**
+- File: `prototype_pdf_portrait_grid.html` (di root folder proyek ini,
+  dan sudah dikirim terpisah ke user via present_files — TIDAK termasuk
+  dalam alur aplikasi, murni alat bantu diskusi).
+- Isi: portrait A4 (ukuran & margin persis pakai CSS `.page{width:210mm;
+  height:297mm;padding:12mm}` supaya preview layar = hasil cetak), header
+  dokumen rata tengah, algoritma paginasi grid 2-kolom/4-kartu-per-halaman
+  (fungsi `paginate()`) — SUDAH DIVERIFIKASI lewat trace manual (Node)
+  persis menghasilkan pola yang sama dengan contoh ASCII user (5 sesi
+  SENIN → penuh 1 halaman, sisa 1 + header SELASA di halaman 2, dst).
+  Ada toggle "Contoh: Rekap Jurnal Kelas" / "Contoh: Rekap Jurnal Guru",
+  data dummy termasuk 1 kartu dengan materi ~700 karakter & catatan ~180
+  karakter (badge kuning di pojok tiap kartu menampilkan jumlah karakter
+  dummy-nya, untuk bantu user menilai apakah font-size sudah pas).
+- **CATATAN interpretasi:** contoh header user untuk versi Guru menulis
+  "Kelas: [Guru] · Periode: ..." — kemungkinan salah ketik (copy-paste
+  dari versi Kelas, lupa ganti label). Di prototipe saya buat jadi "Guru:
+  [Nama Guru] · Periode: ..." supaya konsisten dengan versi Kelas. **User
+  perlu konfirmasi apakah interpretasi ini benar** sebelum dikunci ke PDF asli.
+- **BELUM DIKERJAKAN (menunggu approval user atas prototipe):**
+  mengimplementasikan ulang `_bangunRekapPdfKartu` cs. di `frontend/js/app.js`
+  jadi portrait + grid 2-kolom + header rata tengah + tinggi kartu FIXED
+  (dihitung dari batas 700/200 karakter, bukan dinamis per-konten seperti
+  desain kartu-1-kolom sebelumnya). Fungsi-fungsi PDF SAAT INI (per commit
+  17 Sept: `_pdfHeaderDokumen`, `_pdfKpiStrip`, `_pdfHeaderHari`,
+  `_pdfUkurKartuSesi`, `_pdfGambarKartuSesi`, `_bangunRekapPdfKartu`, dst)
+  MASIH LANDSCAPE 1-KOLOM, BELUM DIUBAH.
+
+**Status:** Bagian A (batas karakter) aman di-deploy sekarang, tidak
+tergantung approval prototipe. Bagian B (redesain PDF) menunggu user buka
+`prototype_pdf_portrait_grid.html` (bisa langsung di browser, tekan
+Ctrl/Cmd+P untuk print-preview), beri feedback (ukuran font pas/kurang/
+kebesaran, mode Guru sudah benar interpretasinya, dsb), baru saya port ke
+`_bangunRekapPdfKartu` di `app.js` yang sesungguhnya.
+
+File yang diubah sesi ini: `apps-script/Jurnal.gs`, `frontend/js/app.js`
+(keduanya untuk bagian A saja). File baru: `prototype_pdf_portrait_grid.html`
+(bukan bagian aplikasi, alat diskusi).
+
+### 2026-09-18 (lanjutan) — Layout PDF v2 LANGSUNG diterapkan: 1 baris penuh per sesi, dalam 70/30
+
+User beri feedback atas prototipe grid 2-kolom (hasil sesi sebelumnya):
+hasilnya terlalu banyak space kosong karena 2 kartu berdampingan sering
+beda tinggi. Diminta ganti: **1 sesi = 1 baris PENUH LEBAR** (bukan lagi
+berpasangan 2 kartu per baris), tapi DI DALAM baris itu dibagi 2 kolom:
+kiri 70% (materi kegiatan + catatan), kanan 30% (info kehadiran). Contoh
+ASCII: `JAM 1 - JAM 3 [MAPEL] [NAMA GURU]` lalu baris isi `[Materi] 70% |
+[Kehadiran] 30%`, ganti baris untuk sesi berikutnya. Target: 1 halaman
+memuat sekitar 3-5 bagian (dinamis sesuai panjang konten, bukan fixed),
+hampir tanpa ruang kosong. User bilang **style (warna/chip) sudah bagus,
+tinggal layout-nya saja** — dan minta LANGSUNG dikerjakan ke kode PDF
+asli (bukan prototipe HTML lagi, karena aturan intinya sudah jelas dari
+sesi grid sebelumnya).
+
+**Diimplementasikan langsung ke `frontend/js/app.js`** (menggantikan
+mesin PDF grid-2-kolom dari sesi ini juga, yang TERNYATA belum sempat
+di-deploy user — jadi tidak ada regresi dari versi yang sudah berjalan):
+- Orientasi PDF: **portrait A4**, margin dipersempit (26pt kiri-kanan,
+  24pt atas, 30pt bawah — dari sebelumnya landscape 32pt).
+- Header dokumen (`_pdfHeaderDokumen`): semua teks (judul, nama sekolah,
+  guru/kelas+periode) dibuat **rata tengah** pakai `{align:'center'}`.
+- Fungsi kartu-2-kolom (`_pdfUkurKartuSesi`/`_pdfGambarKartuSesi`) diganti
+  total jadi `_pdfUkurBarisSesi`/`_pdfGambarBarisSesi` — 1 baris penuh
+  lebar per sesi, di dalamnya kolom kiri 70% (materi+catatan, label kecil
+  + teks wrap) dan kolom kanan 30% (status kehadiran ditumpuk vertikal +
+  "dari total N siswa" + daftar tidak-hadir NIS+nama+status, wrap sesuai
+  lebar kolom sempit), dipisah garis tipis. **Tinggi baris dihitung
+  dinamis** dari isi sesungguhnya (bukan fixed) — jadi TIDAK ADA lagi
+  ruang kosong percuma seperti masalah di desain grid sebelumnya.
+- Perkiraan kapasitas (dihitung & diverifikasi lewat Node, lihat catatan
+  ini): kasus TERBURUK (materi 700 + catatan 200 karakter penuh) muat
+  ±3 baris/halaman; konten khas yang lebih pendek muat jauh lebih banyak
+  (6-8+) — sesuai target "3-5 bagian" sebagai rentang umum, bukan angka
+  mati.
+- `_pdfKelompokkanPerHari`, `_pdfChip`, `_pdfWarnaKehadiran`, algoritma
+  page-break (`pastikanRuang`), dan interface `buildRekapPdfGuru`/
+  `buildRekapPdfKelas` (dipanggil dari 3 tempat UI) TIDAK berubah — jadi
+  tidak perlu ubah apapun di luar mesin gambar PDF ini.
+- KPI strip & header-hari tetap ada, cuma disesuaikan ukurannya untuk
+  lebar portrait yang lebih sempit dari landscape sebelumnya.
+
+**Status:** lolos `node --check`, tidak ada fungsi/variabel dobel atau
+sisa referensi ke fungsi lama. **Belum dites render sungguhan** (tidak
+ada browser di sini) — mohon dicoba export PDF beneran setelah deploy,
+terutama untuk 1 sesi dengan materi mendekati 700 karakter untuk pastikan
+teks tidak terpotong/tumpang tindih dengan kolom kehadiran atau baris
+berikutnya.
+
+File yang diubah sesi ini (lanjutan): **hanya** `frontend/js/app.js`.
+Prototipe grid 2-kolom (`prototype_pdf_portrait_grid.html`) sudah TIDAK
+dipakai lagi (digantikan pendekatan 1-baris-70/30 ini), dibiarkan di
+project sebagai riwayat diskusi saja.
+
+### 2026-09-19 — Kehadiran dikelompokkan+fade, 2-tab UI, noindex, login lebih cepat
+
+User bilang aplikasi sudah bagus & berjalan baik, minta beberapa perbaikan
+kecil:
+
+**1. Kehadiran di PDF: dikelompokkan per status + efek fade (bukan hitung tinggi)**
+- Sebelumnya: daftar "NIS — Nama (Status)" 1 baris per siswa, tinggi
+  dihitung persis dari jumlah baris (bikin baris sesi jadi tidak
+  terprediksi kalau banyak yang tidak hadir).
+- Sekarang: dikelompokkan per status — `Sakit (3): Andre, Dimas, Farhan`,
+  `Izin (2): Tiara, Vany`, `Alpa (1): Rosi` — lalu baris total tetap
+  `Tidak Hadir 5 · Hadir 25 dari 30 siswa` di posisi TETAP di bawah.
+- Kolom kanan (Kehadiran) sekarang punya **tinggi TETAP** (konstanta
+  `PDF_KEHADIRAN_KANAN_TINGGI`, tidak lagi dihitung dari isi) — kalau
+  daftar nama kepanjangan, dipotong lalu diberi **efek fade** (`_pdfEfekFade`,
+  beberapa strip putih ditumpuk pakai `doc.GState({opacity:...})`, dengan
+  fallback penutup polos kalau versi jsPDF tidak dukung GState) alih-alih
+  bikin baris makin tinggi. Baris "Tidak Hadir · Hadir dari N siswa" SELALU
+  di posisi tetap, tidak pernah ikut terpotong.
+- File: `frontend/js/app.js` (`_pdfUkurBarisSesi`, `_pdfGambarKehadiranKanan`
+  baru, `_pdfEfekFade` baru; `_pdfWarnaKehadiran` lama dihapus karena sudah
+  tidak dipakai).
+
+**2. UI diubah jadi 2-tab: "daftar jurnal" vs "export mingguan"**
+- Sebelumnya kartu Export PDF/Prompt AI nyempil di tengah/bawah halaman
+  daftar jurnal harian (atas-bawah, dinilai user membingungkan).
+- Sekarang 3 halaman (Jurnal Saya/Guru, Jurnal Kelas/Wali Kelas, Admin
+  Jurnal Guru) masing-masing punya **2 tab terpisah** pakai komponen baru
+  `subtabBarHtml()`/`bindSubtabBar()` (CSS baru `.subtab-bar`/`.subtab-btn`
+  di `app.html`, segmented-control 2 pilihan):
+  - Guru: **Jurnal Saya** | **Export Mingguan**
+  - Wali Kelas: **Jurnal Kelas** | **Export Mingguan**
+  - Admin: **Jurnal Guru** | **Export Mingguan**
+- Tab dikontrol lewat parameter route `tab` (`'list'`|`'export'`, default
+  `'list'`) — konsisten dengan pola parameter route yang sudah ada
+  (`page`, `tanggal`, dst). Klik ganti tab pakai `navigate(route, params,
+  {isBack:true})` supaya TIDAK menambah entry baru ke `navStack` (tombol
+  "Kembali" tetap keluar dari halaman, bukan bolak-balik antar tab).
+- `viewJurnalSaya`/`viewJurnalKelas`/`viewAdminJurnal` masing-masing
+  dipecah jadi fungsi render terpisah per tab (`viewJurnalSayaExport`,
+  `viewJurnalKelasExport`, `renderAdminJurnalExportTab`/`renderAdminJurnalListTab`)
+  — TIDAK ada perubahan logic fetch/cache/binding di baliknya, murni
+  dipindah lokasi render + dipisah tab.
+- File: `frontend/app.html` (CSS `.subtab-bar`), `frontend/js/app.js`.
+
+**3. Aplikasi tidak boleh diindeks mesin pencari**
+- `frontend/robots.txt` baru: `Disallow: /` untuk semua user-agent.
+- `<meta name="robots" content="noindex, nofollow, noarchive">` ditambah
+  ke SEMUA halaman HTML (`app.html`, `index.html`, `login.html`,
+  `jadwal-publik.html`) — dipasang keduanya (robots.txt + meta tag) sesuai
+  praktik standar, supaya tetap aman walau ada crawler yang mengabaikan
+  robots.txt atau menemukan URL dari link eksternal.
+
+**4. Optimasi kecepatan proses login**
+- Ditemukan: `actionLogin` (`Auth.gs`) sebelumnya melakukan **3 panggilan
+  Sheets API sinkron** per login — (a) full read mentah `03_USER` (bypass
+  cache) untuk cari baris user, (b) 1 write `setValue()` update kolom
+  `last_login`, (c) 1 write `appendRow()` untuk `writeLog`. Dicek:
+  `last_login` **TIDAK PERNAH dibaca/ditampilkan di manapun** (frontend
+  maupun backend lain) — murni ditulis, tidak berguna. Dihapus, sehingga
+  login sekarang cukup **1 write** (writeLog, untuk audit trail — timestamp
+  login tetap tercatat di 13_LOG). Ini optimasi paling signifikan &
+  paling aman (tidak ada fitur yang hilang, tidak ada UI yang bergantung
+  pada `last_login`).
+- File: `apps-script/Auth.gs`.
+
+**Status:** semua lolos `node --check`, HTML div/brace balance OK.
+**Belum dites render/deploy sungguhan** — terutama perlu dicek: efek fade
+di kolom kehadiran (visual, cek `doc.GState` benar-benar bekerja di jsPDF
+2.5.1 yang dipakai — sudah dicek lewat web search ada contoh kerja persis
+pola yang sama, tapi belum dites langsung di PDF asli), tampilan 2-tab di
+3 halaman, dan perasaan kecepatan login setelah fix.
+
+File yang diubah sesi ini: `apps-script/Auth.gs`, `frontend/app.html`,
+`frontend/js/app.js`, file baru `frontend/robots.txt`. Semua 4 file HTML
+frontend mendapat 1 baris meta tag noindex.
+
+### 2026-09-20 — Fix: nama siswa tidak hadir tidak muncul sama sekali di PDF
+
+User konfirmasi login sudah terasa lebih cepat, tapi laporkan bug baru:
+setelah update kehadiran-dikelompokkan (19 Sept), yang muncul di kolom
+kehadiran PDF **hanya baris total** ("Tidak Hadir 8 · Hadir 23 dari 31
+siswa") — nama siswa per status (Sakit/Izin/Alpa) **tidak muncul sama
+sekali**. User juga sebutkan: sebelumnya (sebelum 19 Sept) untuk siswa
+yang NIS-nya sudah "dihapus", yang tampil cuma NIS tanpa nama — harusnya
+nama tetap muncul.
+
+**Ditemukan 2 bug terpisah, keduanya diperbaiki:**
+
+**Bug 1 (penyebab utama — nama hilang total):** `frontend/js/app.js`,
+`_pdfGambarKehadiranKanan`, mengelompokkan `tidak_hadir_detail` pakai
+object dengan KEY HARDCODE persis `'sakit'/'izin'/'alpa'`
+(`String(t.status).toLowerCase()` dicocokkan EXACT ke key tsb). Total
+Hadir/Tidak Hadir dihitung dari JUMLAH baris kehadiran (independen dari
+isi status), jadi tetap benar — tapi begitu nilai status di data
+sesungguhnya sedikit beda dari yang diasumsikan kode (spasi ekstra,
+"Alpha" bukan "Alpa", dll — TIDAK sempat dicek langsung ke spreadsheet
+user), pencocokan EXACT gagal untuk SEMUA baris sekaligus → grup kosong
+total → tidak ada nama yang digambar, walau datanya sebenarnya ADA
+lengkap di `tidak_hadir_detail`.
+- **Fix:** fungsi baru `_pdfKelompokkanTidakHadir()` — mengelompokkan
+  pakai pencocokan LONGGAR ("dimulai dengan" ke sakit/izin/alp, bukan
+  exact match) untuk urutan+warna, dan status yang TIDAK dikenali pun
+  tetap ditampilkan apa adanya (bukan didiamkan/dibuang) — jadi nama
+  SELALU muncul, terlepas dari variasi kecil penulisan status.
+- Fix yang SAMA (fungsi `_normalisasiStatusKehadiran`) juga diterapkan di
+  backend `apps-script/Jurnal.gs` (`_rekapKehadiranSatuJurnal`) untuk
+  akar masalah yang sama pada hitungan `rekap.sakit/izin/alpa` (angka
+  ini sendiri tidak dipakai di kartu kehadiran baru, tapi tetap diperbaiki
+  supaya konsisten & benar kalau dipakai bagian lain nanti).
+
+**Bug 2 (nama hilang khusus utk siswa nonaktif/pindah kelas):**
+`apps-script/Jurnal.gs`, `actionGetRekapJurnalKelas` — index pencarian
+nama siswa (`siswaIdx`) HANYA dibangun dari siswa **AKTIF** di kelas
+tsb. Kalau siswa sudah dinonaktifkan/pindah (tapi punya catatan
+kehadiran historis di jurnal lama kelas ini), lookup gagal → fallback
+"(nama tidak ditemukan)". Ini BEDA dari `actionGetRekapJurnalGuru` yang
+sejak awal sudah benar (index dari SELURUH `06_SISWA`, bukan cuma yang
+aktif).
+- **Fix:** `siswaIdx` untuk pencarian nama sekarang dibangun dari
+  SELURUH `06_SISWA` (NIS unik secara nasional, aman dicari lintas
+  kelas/status aktif) — SAMA seperti pola di rekap Guru. `totalSiswa`
+  (dipakai hitung Hadir/Tidak Hadir) TETAP dari siswa aktif kelas ini
+  saja — itu sudah benar sejak awal, tidak diubah.
+
+**Status:** lolos `node --check` kedua file. **Belum dites render
+sungguhan** — mohon coba export ulang PDF untuk minggu yang sama (8
+tidak hadir dari 31 siswa) dan pastikan sekarang nama-nama muncul
+dikelompokkan per status.
+
+File yang diubah sesi ini: `apps-script/Jurnal.gs`, `frontend/js/app.js`.
+
+### 2026-09-20 (lanjutan) — Kehadiran: tinggi "auto max" dari materi+catatan (bukan konstanta tetap) + log dibatasi 90 hari
+
+**Klarifikasi user atas desain kehadiran (fix pagi ini):** maksud user
+bukan tinggi kolom kehadiran itu KONSTANTA TETAP — maksudnya, **"auto
+max"** (plafon tinggi baris) itu didefinisikan sebagai **tinggi teoritis
+kalau Materi Kegiatan persis 700 karakter + Catatan persis 200 karakter**
+(sesuai batas input yang sudah ditegakkan). Untuk baris yang isinya lebih
+pendek dari batas itu, baris BOLEH lebih pendek — TAPI kalau daftar siswa
+tidak hadir butuh ruang lebih banyak dari sekadar tinggi materi/catatan
+baris itu, baris BOLEH "meregang" naik sampai plafon tsb supaya
+daftarnya muat penuh **tanpa perlu di-blur**. Blur/fade HANYA dipakai
+kalau daftar tidak hadir masih lebih panjang dari plafon itu sendiri.
+
+**Diimplementasikan di `frontend/js/app.js`:**
+- Konstanta `PDF_KEHADIRAN_STATUS_BLOK_H`/`PDF_KEHADIRAN_KANAN_TINGGI`
+  (tinggi tetap, dari fix kemarin) **DIHAPUS**, diganti pendekatan dinamis.
+- Fungsi baru `_pdfTinggiKiriMaksTeoritis(doc, lebarKiri)` — dipanggil
+  **sekali per PDF** (bukan per baris, karena hasilnya sama untuk semua
+  baris — lebar kolom kiri tetap), mengukur tinggi wrap SUNGGUHAN (lewat
+  `doc.splitTextToSize` asli, bukan tebakan char-per-baris manual) dari
+  teks contoh sepanjang tepat `BATAS_KARAKTER_RINGKASAN`/`BATAS_KARAKTER_CATATAN`
+  karakter (fungsi bantu `_pdfTeksUkurSepanjang`). Hasilnya = "plafon
+  teoritis" (`tinggiMaksAuto`), dihitung di `_bangunRekapPdfKartu` sebelum
+  loop hari/sesi, dioper ke tiap panggilan `_pdfUkurBarisSesi`.
+- `_pdfUkurBarisSesi` sekarang juga menghitung `tinggiKananPenuh` (tinggi
+  yang DIBUTUHKAN kalau semua nama tidak-hadir ditampilkan utuh, dari
+  hasil `_pdfKelompokkanTidakHadir` yang sekarang dipanggil DI SINI —
+  bukan lagi di fungsi gambar — supaya keputusan "perlu blur atau tidak"
+  dan tinggi baris final konsisten 1 sumber). Rumus intinya:
+  ```
+  plafon = max(tinggiKiri, tinggiMaksAuto)
+  tinggiIsi = min(max(tinggiKiri, tinggiKananPenuh), plafon)
+  kananTerpotong = tinggiKananPenuh > tinggiIsi
+  ```
+  `tinggiKiri` (materi+catatan) TIDAK PERNAH ikut terpotong (dijamin
+  matematis: `plafon >= tinggiKiri` selalu, jadi `tinggiIsi >= tinggiKiri`
+  juga selalu) — cuma kolom Kehadiran yang bisa dibatasi kalau melebihi
+  plafon.
+- `_pdfGambarKehadiranKanan` sekarang menerima `statusBlokTinggi` (ruang
+  yang BENAR-BENAR tersedia untuk baris ini, dari `uk.tinggiIsi`, bukan
+  konstanta lagi) + `kelompok`/`kananTerpotong` yang sudah dihitung di
+  `_pdfUkurBarisSesi` (tidak dihitung ulang). Fade HANYA muncul kalau
+  `kananTerpotong` true.
+- Sudah dicek lewat penalaran manual beberapa skenario (materi
+  pendek+sedikit tidak hadir → baris tetap pendek, tanpa waste; materi
+  pendek+banyak tidak hadir → baris meregang sampai pas, tanpa blur kalau
+  masih di bawah plafon; materi pendek+SANGAT banyak tidak hadir → baris
+  dibatasi di plafon + blur; materi/catatan maksimal → plafon = tinggi
+  baris, sama seperti sebelumnya) — semua masuk akal, tidak ada tinggi
+  negatif/aneh.
+
+**Log dibatasi 90 hari (permintaan terpisah, supaya sheet log tidak makin
+besar):**
+- Fungsi baru `cleanupLogLama()` di `apps-script/Utils.gs` — baca
+  `13_LOG`, buang baris dengan kolom `waktu` lebih tua dari
+  `BATAS_LOG_HARI = 90` hari (baris dengan tanggal tidak valid/tidak
+  terbaca TETAP disimpan, jaga-jaga jangan sampai salah hapus), lalu
+  tulis ulang sisa baris (clear range data + setValues, bukan hapus
+  baris satu-satu yang lebih lambat & rawan index bergeser).
+- Didaftarkan sebagai trigger harian baru (jam 4 pagi, beda jam dari
+  `cleanupExpiredTokens` yang sudah ada jam 3 pagi) di `setupTriggers()`
+  (`apps-script/Code.gs`) — **user WAJIB jalankan ulang `setupTriggers()`
+  manual sekali dari Apps Script editor setelah deploy**, supaya trigger
+  baru ini terdaftar (memanggil `setupTriggers()` aman dijalankan ulang
+  kapan saja — dia hapus semua trigger lama dulu baru buat ulang semua,
+  jadi tidak akan dobel).
+- `actionGetLog` (tampilan log admin) TIDAK diubah — pembatasan 90 hari
+  terjadi di level SHEET (housekeeping), bukan di level tampilan.
+
+**Status:** lolos `node --check` semua file. **Belum dites render/deploy
+sungguhan.** Yang perlu dicek: (1) PDF kehadiran — export minggu dengan
+campuran sesi materi pendek+banyak tidak hadir DAN materi panjang+sedikit
+tidak hadir, lihat apakah tingginya terasa proporsional; (2) setelah
+`setupTriggers()` dijalankan ulang, cek di Apps Script editor → Triggers
+apakah `cleanupLogLama` sudah terdaftar jam 4 pagi.
+
+File yang diubah sesi ini (lanjutan): `frontend/js/app.js`,
+`apps-script/Utils.gs`, `apps-script/Code.gs`.
+
+### 2026-09-21 — Koreksi: kolom Kehadiran dilepas dari batas materi/catatan, sekarang tumbuh bebas
+
+**Screenshot user:** materi & catatan sudah PANJANG (mendekati/di batas
+700+200 karakter), tapi kolom Kehadiran masih terpotong — Sakit (4)
+tampil lengkap, tapi Izin (9) cuma tampil 2 nama lalu berhenti. User
+tegaskan: jumlah siswa tidak hadir TIDAK ADA HUBUNGANNYA dengan panjang
+materi yang ditulis guru — bisa saja materi cuma 70 karakter tapi yang
+tidak hadir belasan siswa. Jadi kolom Kehadiran seharusnya bisa
+menampilkan SEMUA nama, tidak dibatasi oleh seberapa panjang materi.
+
+**Root cause kemungkinan:** deploy yang di-screenshot user kemungkinan
+masih pakai versi SEBELUM fix "auto max" pagi ini (masih versi kotak
+Kehadiran tinggi TETAP ~40pt dari sesi 19 Sept) — belum sempat di-deploy
+ulang. Tapi terlepas dari itu, desain "auto max" (plafon = tinggi
+teoritis materi 700+catatan 200 karakter) itu SENDIRI secara konsep
+kurang tepat, seperti dikoreksi user: mengaitkan plafon Kehadiran ke
+estimasi panjang materi itu masih bisa membatasi secara artifisial,
+padahal ruang halaman sebenarnya longgar (1 baris = 1 sesi penuh lebar,
+tidak ada lagi masalah "2 kartu berdampingan beda tinggi" yang jadi
+alasan awal perlu ada plafon).
+
+**Desain final (lebih sederhana & benar):** kolom Kehadiran SEKARANG
+BEBAS tumbuh sesuai kebutuhan SEBENARNYA (semua nama tidak hadir,
+lengkap, tidak ada plafon terkait materi sama sekali). Tinggi baris =
+`max(tinggi Materi+Catatan, tinggi Kehadiran yang dibutuhkan)`. Fade/blur
+sekarang HANYA katup pengaman mutlak (`PDF_KEHADIRAN_MAKS_ABSOLUT = 420pt`
+— jauh di atas kebutuhan normal, setara puluhan siswa tidak hadir
+sekaligus dalam 1 sesi), bukan lagi terkait estimasi materi.
+
+**Perubahan kode (`frontend/js/app.js`):**
+- Konstanta & fungsi estimasi teoritis (`_pdfTinggiKiriMaksTeoritis`,
+  `_pdfTeksUkurSepanjang`, `PDF_TEKS_UKUR_DASAR`, parameter `tinggiMaksAuto`
+  yang dioper ke `_pdfUkurBarisSesi`) — **DIHAPUS SEPENUHNYA**, sudah
+  tidak relevan dengan desain baru (lebih sederhana, satu bug class
+  kurang untuk dirawat).
+- `_pdfUkurBarisSesi`: `tinggiKananDipakai = min(tinggiKananPenuh,
+  PDF_KEHADIRAN_MAKS_ABSOLUT)`, lalu `tinggiIsi = max(tinggiKiri,
+  tinggiKananDipakai)` — tidak ada lagi plafon yang bisa membatasi
+  kehadiran di bawah kebutuhan sebenarnya kecuali sudah benar-benar
+  ekstrem (>420pt, setara puluhan siswa).
+- Sudah diverifikasi lewat perhitungan manual: skenario screenshot user
+  (4 sakit + 9 izin + 4 alpa, nama panjang) cuma butuh ±105pt — jauh di
+  bawah katup 420pt, jadi sekarang akan tampil PENUH tanpa blur sama
+  sekali, berapa pun panjang materinya.
+
+**Status:** lolos `node --check`. **Belum dites render sungguhan** —
+mohon deploy ulang `frontend/js/app.js` (satu-satunya file yang berubah)
+dan coba export ulang PDF untuk minggu yang sama di screenshot, pastikan
+sekarang Izin (9) tampil semua 9 nama.
+
+File yang diubah sesi ini: **hanya** `frontend/js/app.js`.
+
+### 2026-09-21 (lanjutan) — Fitur baru: Export Jadwal Mingguan (Guru & Kelas) → PDF
+
+**Permintaan user:** fitur export/download untuk Jadwal Guru dan Jadwal
+Kelas — simpel, mudah dibaca, tapi desainnya "hidup", warna flat modern,
+tidak kaku (bukan tabel teks polos).
+
+**Backend — 1 endpoint baru (Data.gs), read-only:**
+- `actionGetJadwalPerKelas(params, session)` — jadwal 1 kelas SELAMA 1
+  MINGGU (Senin-Sabtu), mengelompok per hari. Bentuk responsnya SENGAJA
+  dibuat identik dengan `actionGetJadwalPerGuru` yang sudah ada
+  (`jadwal_per_hari`), cuma field per-item `nama_kelas` diganti
+  `nama_guru` (karena di sini kelasnya sudah pasti 1, yang bervariasi per
+  sesi adalah gurunya) — supaya kode PDF di frontend bisa pakai 1 mesin
+  gambar yang sama untuk keduanya. Tidak ada pembatasan akses (mengikuti
+  pola `actionGetJadwalKelasPublik` yang sudah ada — jadwal kelas
+  diperlakukan sebagai data non-sensitif di aplikasi ini, sama seperti
+  yang dipakai halaman publik `jadwal-publik.html`).
+- Didaftarkan di `Code.gs` router: `getJadwalPerKelas`.
+
+**Frontend — mesin PDF timetable baru (beda total dari mesin PDF rekap
+jurnal), di `frontend/js/app.js`:**
+- Landscape A4 — grid timetable klasik: kolom = hari (Senin-Sabtu), baris
+  = jam ke- (dihitung otomatis dari jam MAKSIMAL yang benar-benar ada di
+  data, bukan dari config — supaya selalu pas sama isi jadwalnya). 1 blok
+  jadwal yang jamnya berurutan (mis. "Jam 2-3") digambar sebagai 1 sel
+  yang merentang 2 baris tinggi (bukan 2 sel terpisah) — supaya benar-benar
+  terlihat seperti timetable sungguhan.
+- Tiap sel diwarnai per MATA PELAJARAN (palet 10 warna flat modern —
+  biru/hijau/oranye/ungu/dst — siklus kalau mapelnya lebih dari 10),
+  dengan legenda warna di bawah grid. Ini yang bikin "hidup" & gampang
+  di-scan sekali lihat, sesuai permintaan user — bukan literal gambar/
+  foto (jsPDF tidak mendukung embed ikon font dengan mudah), tapi lewat
+  warna+bentuk (rounded cell, header band gelap, dst), konsisten dengan
+  gaya visual PDF rekap jurnal yang sudah ada.
+- Fungsi generik `_pdfBangunGridJadwal(opts)` dipakai bersama oleh 2
+  wrapper: `buildJadwalGuruPdf(data)` (judul "Jadwal Mengajar Mingguan",
+  kolom kedua = nama kelas) dan `buildJadwalKelasPdf(data)` (judul
+  "Jadwal Pelajaran Kelas", kolom kedua = nama guru).
+- Tombol **Export PDF** dipasang di 3 tempat yang SUDAH ADA (tidak bikin
+  halaman baru):
+  1. **Jadwal Saya** (Guru) — `renderJadwalSayaGuruTabs`, pakai data yang
+     SUDAH di-cache (`jadwalSayaGuruCache`), TIDAK ada panggilan API
+     tambahan saat export.
+  2. **Admin → Jadwal Guru** — `renderAdminGuruTabs`, sama, pakai
+     `adminGuruDataCache` yang sudah ada.
+  3. **Jadwal Kelas** (dipakai bersama oleh Guru/Wali Kelas/Admin, 1
+     fungsi `viewJadwalKelasLihat`) — `renderJadwalKelasLihatShell`,
+     panggil `getJadwalPerKelas` FRESH saat tombol diklik (view ini
+     sebelumnya cuma cache per-hari, bukan per-minggu, jadi butuh 1
+     panggilan API baru khusus saat export — tombol dalam kondisi
+     disabled+spinner selama menunggu).
+- Nama file: `Jadwal-Guru-<nama>.pdf` / `Jadwal-Kelas-<nama>.pdf`.
+
+**Status:** lolos `node --check` semua file terkait, HTML balance OK,
+endpoint terhubung end-to-end (router → handler → frontend). **Belum
+dites render sungguhan.**
+
+File yang diubah sesi ini (lanjutan): `apps-script/Data.gs`,
+`apps-script/Code.gs`, `frontend/js/app.js`.
+
+### 2026-09-22 — Materi Sosialisasi (PPTX) untuk Guru/Wali Kelas/Admin
+
+**Permintaan user:** buat presentasi sosialisasi aplikasi untuk guru,
+kepala sekolah, dan admin — lengkap, cukup detail, berisi langkah-langkah
+cara pakai, fungsi & fitur, bahasa semi-formal khas guru profesional.
+
+**Dikerjakan:** file `materi-sosialisasi/Sosialisasi_Jurnal_Mengajar.pptx`
+— 29 slide, dibuat dengan pptxgenjs (skill pptx), palet warna kustom
+(Navy `1E3A5F` primer, Teal `0F766E` sekunder untuk bagian Wali Kelas,
+Amber `D97706` aksen untuk bagian Admin/Kepsek & angka/CTA), font Cambria
+(judul) + Calibri (isi), ikon react-icons (Fa6) dirender ke PNG lalu
+ditempel di lingkaran warna (motif "icon in colored circle") — script
+generator ikon: `materi-sosialisasi/gen_icons.js` (TIDAK disertakan di
+zip, hanya hasil pptx final; kalau perlu regenerasi ikon di sesi lain,
+tulis ulang script serupa memakai `react-icons/fa6` + `sharp`, render
+warna putih lalu komposit di atas shape lingkaran berwarna di pptxgenjs).
+
+**Struktur 29 slide:**
+1. Cover
+2. Agenda (6 bagian)
+3. Latar belakang (sebelum vs sesudah pakai aplikasi)
+4. 3 pilar tujuan (Guru/Wali Kelas/Admin)
+5. Cara mengakses aplikasi (4 langkah)
+6. Perbandingan 3 peran & hak akses
+7. Divider "Panduan untuk Guru"
+8. Login & beranda guru
+9. Melihat jadwal mengajar ("Jadwal Saya")
+10-11. Mengisi jurnal (langkah 1-3, lalu 4-7: ringkasan≤700 karakter,
+   catatan≤200 karakter, tandai kehadiran, simpan)
+12. Kehadiran siswa (4 status + kode warna: Hijau=Hadir, Kuning=Sakit,
+   Ungu=Izin, Merah=Alpa)
+13. Riwayat & batas waktu edit jurnal
+14. Export Jurnal Mingguan (PDF)
+15. **Highlight fitur "Salin Prompt AI"** (slide bg navy beda gaya,
+   badge "FITUR BARU", alur 4 langkah)
+16. Export Jadwal Mengajar (mockup grid timetable mini)
+17. Divider "Panduan untuk Wali Kelas"
+18. Memantau Jurnal Kelas
+19. Ringkasan kehadiran per mapel
+20. Export Rekap Jurnal Kelas & Jadwal Kelas
+21. Divider "Panduan untuk Admin & Kepala Sekolah"
+22. Kelola data master (8 kartu: guru/siswa/kelas/mapel/jadwal/jam/
+   tahun ajaran/konfigurasi)
+23. Memantau seluruh jurnal (filter tanggal/kelas/guru/mapel)
+24. Melihat & export jadwal guru/kelas manapun
+25. Pengaturan sistem (5 baris: nama sekolah, jam maks, izin edit,
+   batas edit hari, tahun ajaran aktif)
+26. Log aktivitas (retensi 90 hari — merujuk fitur `cleanupLogLama` 20 Sept)
+27. Hal-hal penting (6 kartu: isi segera, batas edit, batas karakter,
+   jaga akun, hubungi admin, cek sebelum simpan)
+28. FAQ (6 pertanyaan umum)
+29. Penutup/ucapan terima kasih + kontak bantuan
+
+**Sudah di-QA:** render ke PDF via LibreOffice headless, dicek visual
+slide 1 (cover), 10 (langkah mengisi jurnal), 15 (highlight Prompt AI),
+27 (hal penting) — semua rapi, tidak ada teks terpotong/tumpang tindih,
+ikon tampil benar. Slide lain (2-9, 11-14, 16, 18-26, 28) TIDAK dicek
+satu-satu secara visual (dibuat dengan pola/helper yang sama seperti yang
+sudah di-QA, risiko rendah) — **kalau user menemukan slide yang
+tampilannya kurang pas, kemungkinan besar cukup perbaiki 1 helper
+function di `build.js`, bukan mengulang semua**.
+
+**Konten TIDAK mengubah dan TIDAK dipengaruhi oleh kode aplikasi** (murni
+dokumen presentasi terpisah) — tidak ada risiko terhadap Apps Script atau
+frontend yang sudah berjalan.
+
+File yang ditambahkan sesi ini: `materi-sosialisasi/Sosialisasi_Jurnal_Mengajar.pptx`.
+
+---
+
+## RENCANA FITUR BERIKUTNYA (belum dikerjakan sama sekali — user sudah kasih tahu di akhir sesi 22 Sept, untuk dikerjakan di chat lanjutan)
+
+User berencana menambahkan setelah chat ini:
+
+1. **Export Jurnal BULANAN untuk Guru** — dikelompokkan berdasarkan
+   PERTEMUAN guru di tiap KELAS per MAPEL (bukan per-hari seperti rekap
+   mingguan yang sudah ada sekarang). Kemungkinan bentuknya: 1 bagian per
+   kombinasi kelas+mapel, berisi daftar semua tanggal pertemuan bulan itu
+   beserta materi/kehadiran masing-masing — perlu didiskusikan detail
+   pengelompokan & tampilannya dengan user sebelum mulai coding (ikuti
+   pola sesi-sesi sebelumnya: klarifikasi dulu / minta contoh visual kalau
+   perlu, terutama untuk hal serumit ini, sebelum ubah kode PDF).
+2. **Export Jurnal KELAS Bulanan** — serupa tapi dikelompokkan per MATA
+   PELAJARAN (bukan per kelas+mapel seperti guru, karena kelasnya sudah
+   pasti 1) — kemungkinan besar bisa berbagi banyak logic dengan poin 1
+   di atas (grouping serupa, cuma sudut pandang beda).
+3. **Perbaikan default prompt AI** — prompt yang dihasilkan fitur "Salin
+   Prompt AI" (`buildPromptJurnalGuru`/`buildPromptJurnalKelas` di
+   `frontend/js/app.js`) perlu disempurnakan supaya hasil dokumen dari
+   AI (ChatGPT/Gemini) lebih berkualitas — user belum kasih detail
+   spesifik apa yang kurang, perlu digali dulu di chat lanjutan (contoh
+   hasil yang kurang bagus? bagian mana yang perlu diperbaiki: instruksi,
+   struktur, tingkat detail?).
+
+**PENTING:** endpoint backend yang SUDAH ADA sekarang (`getRekapJurnalGuru`/
+`getRekapJurnalKelas`, `Jurnal.gs`) itu MINGGUAN (rentang tanggal bebas,
+maks 31 hari — `REKAP_MAX_HARI`). Untuk kebutuhan BULANAN yang
+dikelompokkan per kelas+mapel (bukan per hari), kemungkinan besar perlu
+endpoint BARU (bukan sekadar perbesar rentang tanggal endpoint lama),
+karena STRUKTUR pengelompokan datanya beda total (per kelas+mapel,
+bukan per tanggal/hari seperti sekarang) — perlu analisis ulang sebelum
+mulai implementasi.
+
+---
+
+## Sesi 2026-09-26 — Dashboard Kegiatan (BARU, selesai)
+
+Fitur baru di luar 3 rencana sebelumnya (export bulanan guru/kelas, prompt
+AI) — diminta user di sesi ini: dashboard statistik sekolah, halaman &
+file terpisah dari app.js/app.html.
+
+**Keputusan yang dikonfirmasi user sebelum coding:**
+- Data: gabungan 4 metrik — jurnal terisi vs total jadwal, guru belum isi
+  jurnal, tren aktivitas, kehadiran siswa (hadir/sakit/izin/alpa)
+- Akses: SEMUA role (GURU/WALI_KELAS/ADMIN) melihat data yang SAMA
+  (agregat seluruh sekolah, bukan discope per guru/kelas)
+- Backend: endpoint baru diizinkan (tidak mengubah yang sudah ada)
+- Bentuk: halaman terpisah (`dashboard-kegiatan.html`), link dari
+  topbar `app.html`, BUKAN menu di dalam SPA
+
+**Dibangun:**
+- `apps-script/Dashboard.gs` (BARU) — `actionGetDashboardStats(params, session)`,
+  1 endpoint read-only, mode `hari_ini` / `kemarin` / `minggu_lalu`.
+  Konsep "sesi terisi" pakai `groupJadwalBlok()` (dari Data.gs, reuse) lalu
+  dicocokkan ke `10_JURNAL` per kombinasi guru+kelas+mapel — pola yang
+  SAMA seperti `_jadwalGuru()` di Data.gs, cuma digeneralisasi untuk
+  SEMUA guru bukan 1 guru. `minggu_lalu` = H-7 s.d. H-1 (7 hari yang
+  SUDAH lewat semua, bukan rolling termasuk hari ini) — supaya cache
+  1 minggu di frontend aman (datanya tidak akan berubah lagi).
+- Route baru didaftarkan di `Code.gs`: `getDashboardStats` — butuh
+  session (login), TIDAK ada pembatasan role (sesuai keputusan "semua
+  role bisa lihat").
+- `frontend/dashboard-kegiatan.html` (BARU) — halaman standalone,
+  gaya admin-dashboard compact (kartu statistik gradient warna,
+  donut chart, line/bar chart tren, bar chart kehadiran, list
+  collapsible guru belum isi). Pakai Chart.js via CDN cdnjs (library
+  baru, alasan sama seperti jsPDF: murni client-side, konsisten pola
+  loading CDN yang sudah ada).
+- `frontend/js/dashboard-kegiatan.js` (BARU) — SENGAJA terpisah dari
+  app.js. Reuse `config.js`/`auth.js`/`api.js` yang sudah ada (tidak
+  duplikasi token/session logic). Cache sendiri di localStorage
+  (namespaced, pola sama seperti `cache.js` tapi file terpisah karena
+  beda tujuan): TTL hari_ini=2 jam, kemarin=1 hari, minggu_lalu=1 minggu
+  — sesuai permintaan user, karena mencerminkan seberapa cepat masing2
+  data itu berubah.
+- `app.html` — tambah 1 tombol topbar (`.topbar-stats`, ikon
+  `fa-chart-line`) ke `dashboard-kegiatan.html`. Tidak mengubah
+  `js/app.js` sama sekali.
+
+**Belum dikerjakan (menyusul):**
+- Test di `TestSuite.gs` untuk `getDashboardStats` belum ditambahkan
+- Deploy & uji nyata di produksi oleh user (kode ini hasil sesi chat,
+  belum pernah dijalankan sungguhan)
+- 3 fitur dari sesi sebelumnya (export bulanan guru/kelas, prompt AI)
+  masih menunggu giliran setelah ini
+
 ---
 
 ## Keputusan Teknis Penting
@@ -976,6 +1584,8 @@ File yang diubah sesi ini: `apps-script/Jurnal.gs`, `apps-script/TestSuite.gs`,
 | 2026-09-05 | Apps Script bound ke Spreadsheet, dikelola via clasp+GitHub | Tidak perlu expose Spreadsheet ID, kode tetap versioned di GitHub |
 | 2026-09-05 | Semua view frontend dalam satu app.js | Skala aplikasi masih kecil, memisah file menambah kompleksitas tanpa manfaat nyata |
 | 2026-09-05 | Data master (guru/kelas/siswa/jadwal) dikelola di spreadsheet, bukan lewat web | Sesuai keputusan user — input manual di spreadsheet |
+| 2026-09-26 | Dashboard Kegiatan: halaman & file terpisah dari app.js/app.html, endpoint baru `getDashboardStats`, semua role bisa akses (data sama, agregat sekolah) | Permintaan eksplisit user — halaman baca-saja, supaya app.js tidak makin membengkak |
+| 2026-09-26 | Cache dashboard di client: 2 jam (hari ini) / 1 hari (kemarin) / 1 minggu (minggu lalu) | Mengikuti kecepatan perubahan data masing-masing rentang |
 
 ---
 

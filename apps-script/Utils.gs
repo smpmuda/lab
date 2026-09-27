@@ -6,6 +6,22 @@
 var SS = SpreadsheetApp.getActiveSpreadsheet();
 var CACHE = CacheService.getScriptCache();
 
+// [BARU — root cause fix, 2026-09-13] Kolom "aktif" di berbagai sheet bisa
+// berisi BOOLEAN asli (kalau user membuat kolomnya sebagai checkbox di Google
+// Sheets) ATAU teks "TRUE" (sesuai konvensi awal proyek). Perbandingan lama
+// `String(r.aktif) === 'TRUE'` SELALU FALSE untuk boolean asli, karena
+// String(true) di JavaScript menghasilkan "true" huruf kecil, bukan "TRUE"
+// huruf besar — akibatnya baris yang sebenarnya aktif malah tersaring habis
+// (gejala: daftar guru/kelas/jadwal/siswa kosong padahal datanya benar).
+// isAktif() menerima KEDUA bentuk (boolean asli maupun teks, case-insensitive,
+// whitespace berlebih ditoleransi) supaya tidak rapuh terhadap cara user
+// mengisi kolom di spreadsheet.
+function isAktif(val) {
+  if (val === true) return true;
+  if (val === false || val === null || val === undefined) return false;
+  return String(val).trim().toUpperCase() === 'TRUE';
+}
+
 // TTL cache per jenis sheet (detik). Sheet yang jarang berubah (master data)
 // di-cache lebih lama; sheet yang sering ditulis (jurnal/kehadiran) lebih pendek
 // atau tidak di-cache sama sekali supaya data selalu segar.
@@ -248,7 +264,7 @@ function getConfig() {
   var rows = readSheet('01_CONFIG');
   var cfg = {};
   rows.forEach(function(r) {
-    if (r.aktif === 'TRUE' || r.aktif === true) {
+    if (isAktif(r.aktif)) {
       cfg[r.config_key] = r.config_value;
     }
   });
@@ -361,6 +377,47 @@ function writeLog(userId, aksi, tabel, keterangan) {
   } catch(e) {
     // log gagal tidak boleh hentikan proses utama
   }
+}
+
+// [BARU 2026-09-20] Buang baris 13_LOG yang lebih tua dari BATAS_LOG_HARI
+// hari — supaya sheet log tidak terus membesar tanpa batas (menambah beban
+// baca/tulis spreadsheet seiring waktu). Dijalankan otomatis lewat trigger
+// harian (lihat setupTriggers() di Code.gs) — TIDAK perlu dipanggil manual,
+// tapi aman dipanggil manual dari editor kalau perlu bersih-bersih segera.
+var BATAS_LOG_HARI = 90;
+
+function cleanupLogLama() {
+  var ws = SS.getSheetByName('13_LOG');
+  if (!ws) return;
+  var data = ws.getDataRange().getValues();
+  if (data.length < 4) return; // belum ada baris data sama sekali
+
+  var headers = data[2];
+  var idxWaktu = headers.indexOf('waktu');
+  if (idxWaktu === -1) { Logger.log('cleanupLogLama: kolom "waktu" tidak ditemukan, dibatalkan'); return; }
+
+  var batasTs = new Date();
+  batasTs.setDate(batasTs.getDate() - BATAS_LOG_HARI);
+
+  var baris = data.slice(3);
+  var disimpan = baris.filter(function(row) {
+    var w = row[idxWaktu];
+    var tgl = (w instanceof Date) ? w : new Date(String(w).replace(' ', 'T'));
+    return isNaN(tgl.getTime()) || tgl >= batasTs; // baris dgn tanggal tidak valid TETAP disimpan (jaga-jaga, jangan hapus data yang tidak bisa dipastikan umurnya)
+  });
+
+  var jumlahDihapus = baris.length - disimpan.length;
+  if (jumlahDihapus <= 0) {
+    Logger.log('cleanupLogLama: tidak ada log lebih dari ' + BATAS_LOG_HARI + ' hari');
+    return;
+  }
+
+  var lastRow = ws.getLastRow();
+  if (lastRow >= 4) ws.getRange(4, 1, lastRow - 3, headers.length).clearContent();
+  if (disimpan.length > 0) ws.getRange(4, 1, disimpan.length, headers.length).setValues(disimpan);
+  invalidateCache('13_LOG');
+
+  Logger.log('cleanupLogLama: dihapus ' + jumlahDihapus + ' baris log (> ' + BATAS_LOG_HARI + ' hari), sisa ' + disimpan.length);
 }
 
 // ── Parse body POST ───────────────────────────────────────────

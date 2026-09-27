@@ -4,7 +4,7 @@
 // ============================================================
 
 const CONFIG = {
-  API_URL: "https://script.google.com/macros/s/AKfycbzIHysEBH6O0nD8G6rD-gIRUwvIxv2mc1c76huCo0UwIAGt5Uo2GJEnLT4-BFA21PoU/exec",
+  API_URL: "https://script.google.com/macros/s/AKfycbyZ-nPXp3myV5pDfnTjVAgceV5kUEsPAWNYQumaax863uauXouZvCXsfZKoYYFtLTwW/exec",
   APP_NAME: "Jurnal Mengajar",
   VERSION: "1.0.0"
 };
@@ -26,4 +26,3 @@ CONFIG.STORAGE_NS = (function() {
   var seg = window.location.pathname.split('/').filter(Boolean)[0];
   return seg ? seg.toLowerCase().replace(/[^a-z0-9_-]/g, '') : 'root';
 })();
-

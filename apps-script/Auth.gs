@@ -21,7 +21,7 @@ function actionLogin(body) {
   // Cari user
   var users = readSheet('03_USER');
   var user = users.find(function(u) {
-    return String(u.username).toLowerCase() === username && String(u.aktif) === 'TRUE';
+    return String(u.username).toLowerCase() === username && isAktif(u.aktif);
   });
 
   if (!user) return err('Username tidak ditemukan atau akun nonaktif', 401);
@@ -60,23 +60,13 @@ function actionLogin(body) {
 
   PROPS.setProperty(TOKEN_PREFIX + token, JSON.stringify(sessionData));
 
-  // Update last_login (best-effort, TIDAK invalidasi cache USER — field ini
-  // non-kritis untuk logika aplikasi, jadi tidak perlu memaksa re-read sheet
-  // USER di request berikutnya hanya karena timestamp berubah. Ini penting
-  // saat banyak guru login bersamaan supaya cache USER tetap terpakai).
-  try {
-    var ws = SS.getSheetByName('03_USER');
-    var data = ws.getDataRange().getValues();
-    var headers = data[2];
-    var lastLoginCol = headers.indexOf('last_login');
-    for (var i = 3; i < data.length; i++) {
-      if (String(data[i][0]) === String(user.user_id)) {
-        ws.getRange(i + 1, lastLoginCol + 1).setValue(nowTs());
-        break;
-      }
-    }
-  } catch(e) {}
-
+  // [FIX 2026-09-19] Sebelumnya di sini ada update kolom last_login yang
+  // melakukan FULL READ mentah (bypass cache) + 1 WRITE langsung ke sheet
+  // 03_USER — 2 round-trip Sheets API tambahan di jalur kritis login, PADAHAL
+  // last_login TIDAK PERNAH ditampilkan atau dipakai di manapun (dicek: tidak
+  // ada di frontend maupun backend lain). Timestamp login tetap tercatat via
+  // writeLog() di bawah (masuk ke 13_LOG). Dihapus supaya login lebih cepat —
+  // login sekarang cukup 1 write (writeLog), bukan 3.
   writeLog(user.user_id, 'LOGIN', 'USER', 'Login berhasil — ' + user.username);
 
   return ok({
@@ -84,6 +74,7 @@ function actionLogin(body) {
     user_id: sessionData.user_id,
     nama:    sessionData.nama,
     role:    sessionData.role,
+    guru_id: sessionData.guru_id,
     kelas_wali: kelasWali
   });
 }

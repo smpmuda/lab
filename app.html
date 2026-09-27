@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow, noarchive">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -71,7 +72,7 @@
     transition: background .12s ease, border-color .12s ease;
   }
   .topbar-logout:active { background: var(--gray-50); }
-  .topbar-sync {
+  .topbar-sync, .topbar-stats {
     background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-600);
     font-size: 15px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
     border-radius: 11px; opacity: 1;
@@ -79,6 +80,7 @@
   }
   .topbar-sync.syncing { animation: syncspin .8s linear infinite; color: var(--blue); border-color: var(--blue-l); background: var(--sky); }
   @keyframes syncspin { to { transform: rotate(360deg); } }
+  .topbar-stats:active { transform: scale(.94); }
 
   .refresh-block-btn {
     width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px;
@@ -261,6 +263,20 @@
   .day-tab.active { background: var(--navy); border-color: var(--navy); color: white; }
 
   .filter-card { background: var(--white); border: 1px solid var(--gray-200); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 16px; margin-bottom: 16px; }
+
+  /* [BARU 2026-09-19] Sub-tab 2 segmen — dipakai buat pisah "daftar jurnal"
+     vs "export mingguan" (Jurnal Saya, Jurnal Kelas, Admin Jurnal Guru)
+     supaya tidak lagi campur atas-bawah dalam 1 halaman panjang. */
+  .subtab-bar {
+    display: flex; gap: 4px; background: var(--gray-100); border-radius: var(--radius-lg);
+    padding: 4px; margin-bottom: 16px;
+  }
+  .subtab-btn {
+    flex: 1; border: none; background: transparent; color: var(--gray-600);
+    font-size: 13px; font-weight: 700; padding: 10px 8px; border-radius: 10px;
+    transition: background .12s ease, color .12s ease, box-shadow .12s ease;
+  }
+  .subtab-btn.active { background: var(--white); color: var(--blue); box-shadow: var(--shadow); }
   .chip-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
   .chip-row::-webkit-scrollbar { display: none; }
   .chip {
@@ -411,6 +427,7 @@
   }
 
   .topbar-sync,
+  .topbar-stats,
   .topbar-logout {
     min-height: 36px;
     border-radius: var(--r-md);
@@ -422,6 +439,7 @@
   }
 
   .topbar-sync:hover,
+  .topbar-stats:hover,
   .topbar-logout:hover {
     background: var(--surface-subtle);
     border-color: var(--border-strong);
@@ -430,11 +448,13 @@
   }
 
   .topbar-sync:active,
+  .topbar-stats:active,
   .topbar-logout:active {
     transform: translateY(1px);
   }
 
-  .topbar-sync {
+  .topbar-sync,
+  .topbar-stats {
     width: 36px;
     height: 36px;
     font-size: 15px;
@@ -1215,6 +1235,7 @@
     <div class="topbar-name" id="hdrAppName">Jurnal Mengajar</div>
     <div class="topbar-user" id="hdrUser">Memuat...</div>
   </div>
+  <button class="topbar-stats" onclick="window.location.href='dashboard-kegiatan.html'" title="Dashboard Kegiatan" aria-label="Dashboard Kegiatan"><i class="fa-solid fa-chart-line" aria-hidden="true"></i></button>
   <button class="topbar-sync" id="btnSync" onclick="forceSyncData()" title="Sinkronkan data terbaru" aria-label="Sinkronkan data terbaru"><i class="fa-solid fa-rotate sync-icon" aria-hidden="true"></i></button>
   <button class="topbar-logout" onclick="Auth.logout()">Keluar</button>
 </div>

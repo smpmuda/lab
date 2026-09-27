@@ -48,6 +48,7 @@ function runFullTest() {
   testGetMasterData(loginResults.guru);
   testJadwalDanKonflik(loginResults.guru);
   testCreateDanUpdateJurnal(loginResults.guru);
+  testRekapJurnalMingguan(loginResults.guru);
   testPaginationDanFilter(loginResults);
   testAksesKontrol(loginResults);
   testLogout(loginResults);
@@ -230,8 +231,17 @@ function testConfig() {
 
   _t('NAMA_SEKOLAH terisi', !!cfg.NAMA_SEKOLAH, cfg.NAMA_SEKOLAH);
   _t('TAHUN_AKTIF terisi', !!cfg.TAHUN_AKTIF, cfg.TAHUN_AKTIF);
-  _t('JAM_MAKS_SENIN = 9', String(cfg.JAM_MAKS_SENIN) === '9');
-  _t('JAM_MAKS_JUMAT = 4', String(cfg.JAM_MAKS_JUMAT) === '4');
+  // [FIX 2026-09-17] Sebelumnya hardcode "=== 9" / "=== 4" — itu nilai
+  // contoh dari data dummy sesi pengembangan awal, BUKAN aturan aplikasi.
+  // Di spreadsheet produksi sekolah nyata, JAM_MAKS_* boleh beda (mis. 8
+  // jam Senin, 5 jam Jumat) — itu bukan bug. Diganti jadi validasi wajar:
+  // harus terisi & berupa angka masuk akal (1–12 jam pelajaran per hari).
+  _t('JAM_MAKS_SENIN terisi angka wajar (1-12)',
+    !isNaN(parseInt(cfg.JAM_MAKS_SENIN)) && parseInt(cfg.JAM_MAKS_SENIN) >= 1 && parseInt(cfg.JAM_MAKS_SENIN) <= 12,
+    'nilai: ' + cfg.JAM_MAKS_SENIN);
+  _t('JAM_MAKS_JUMAT terisi angka wajar (1-12)',
+    !isNaN(parseInt(cfg.JAM_MAKS_JUMAT)) && parseInt(cfg.JAM_MAKS_JUMAT) >= 1 && parseInt(cfg.JAM_MAKS_JUMAT) <= 12,
+    'nilai: ' + cfg.JAM_MAKS_JUMAT);
   _t('BATAS_EDIT_HARI terisi angka', !isNaN(parseInt(cfg.BATAS_EDIT_HARI)));
 
   var res = actionGetConfig();
@@ -396,6 +406,23 @@ function testJadwalDanKonflik(guruSession) {
 
 // ── 6. Create & Update Jurnal ─────────────────────────────────
 
+// Cari tanggal 2099-01-XX pertama yang belum punya jurnal (test atau asli)
+// untuk kombinasi kelas+mapel ini — dipakai testCreateDanUpdateJurnal
+// supaya idempotent (bisa dijalankan ulang tanpa bersih-bersih manual).
+// Rentang 27 hari masih aman di bawah REKAP_MAX_HARI (31) supaya
+// testRekapJurnalMingguan (section 7) tetap bisa mencakupnya dalam 1 query.
+function _cariTanggalTestBebas(kelasId, mapelId) {
+  for (var d = 1; d <= 27; d++) {
+    var tgl = '2099-01-' + (d < 10 ? '0' + d : d);
+    var bentrok = readSheet('10_JURNAL').some(function(j) {
+      return String(j.tanggal) === tgl && String(j.kelas_id) === String(kelasId)
+        && String(j.mapel_id) === String(mapelId) && String(j.status) !== 'DELETED';
+    });
+    if (!bentrok) return tgl;
+  }
+  return '2099-01-01'; // fallback (harusnya tidak pernah sampai sini)
+}
+
 function testCreateDanUpdateJurnal(guruSession) {
   _section('6. CREATE & UPDATE JURNAL');
 
@@ -422,7 +449,14 @@ function testCreateDanUpdateJurnal(guruSession) {
   }
 
   // Pakai tanggal unik supaya tidak bentrok dengan jurnal asli
-  var testTanggal = '2099-01-01'; // tanggal jauh di masa depan, aman untuk test
+  // [FIX 2026-09-17] Sebelumnya hardcode '2099-01-01' — kalau runFullTest()
+  // dijalankan lebih dari sekali TANPA hapus manual baris test sebelumnya
+  // di 10_JURNAL, tanggal itu sudah "terpakai" dan createJurnal (benar!)
+  // menolaknya sebagai duplikat — bukan bug aplikasi, tapi test yang tidak
+  // idempotent. Sekarang cari tanggal 2099 pertama yang BENAR-BENAR belum
+  // ada jurnal test untuk kombinasi kelas+mapel ini, supaya test bisa
+  // dijalankan berkali-kali tanpa perlu bersih-bersih manual dulu.
+  var testTanggal = _cariTanggalTestBebas(kelasId, mapelId);
 
   var createRes = actionCreateJurnal({
     tanggal: testTanggal,
@@ -520,6 +554,43 @@ function testCreateDanUpdateJurnal(guruSession) {
   _t('createJurnal tanpa jam DITOLAK', !noJamBody.ok);
 }
 
+// ── 7. Rekap Jurnal Mingguan (dasar fitur Export PDF, 2026-09-15) ──
+
+function testRekapJurnalMingguan(guruSession) {
+  _section('7. REKAP JURNAL MINGGUAN (dasar fitur Export PDF)');
+
+  if (!guruSession) { _t('Skip — tidak ada session guru valid', false); return; }
+
+  // Rentang ini mencakup SELURUH rentang tanggal yang mungkin dipakai
+  // _cariTanggalTestBebas() di testCreateDanUpdateJurnal (2099-01-01 s.d.
+  // 2099-01-27) — supaya tetap ketemu jurnal test-nya walau tanggal
+  // persisnya bergeser antar run (lihat catatan idempotency di atas).
+  var rekapRes = actionGetRekapJurnalGuru({ tanggal_mulai: '2099-01-01', tanggal_selesai: '2099-01-28' }, guruSession);
+  var rekapBody = JSON.parse(rekapRes.getContent());
+  _t('getRekapJurnalGuru berhasil', rekapBody.ok, rekapBody.ok ? '' : rekapBody.error);
+  if (rekapBody.ok) {
+    _t('Rekap menemukan jurnal test (2099-01-01..27)', rekapBody.data.total_sesi >= 1,
+      'total_sesi=' + rekapBody.data.total_sesi);
+  }
+
+  // Rentang tanggal terbalik (mulai > selesai) harus ditolak
+  var invalidRes = actionGetRekapJurnalGuru({ tanggal_mulai: '2099-01-07', tanggal_selesai: '2099-01-01' }, guruSession);
+  var invalidBody = JSON.parse(invalidRes.getContent());
+  _t('getRekapJurnalGuru rentang tanggal terbalik DITOLAK', !invalidBody.ok, invalidBody.error);
+
+  // Rentang tanggal terlalu panjang (>31 hari) harus ditolak — batas aman REKAP_MAX_HARI
+  var terlaluPanjangRes = actionGetRekapJurnalGuru({ tanggal_mulai: '2099-01-01', tanggal_selesai: '2099-03-01' }, guruSession);
+  var terlaluPanjangBody = JSON.parse(terlaluPanjangRes.getContent());
+  _t('getRekapJurnalGuru rentang >31 hari DITOLAK', !terlaluPanjangBody.ok, terlaluPanjangBody.error);
+
+  // getRekapJurnalKelas: guru yang BUKAN wali kelas & tidak kirim kelas_id harus ditolak jelas
+  if (!guruSession.kelas_wali) {
+    var kelasRes = actionGetRekapJurnalKelas({ tanggal_mulai: '2099-01-01', tanggal_selesai: '2099-01-28' }, guruSession);
+    var kelasBody = JSON.parse(kelasRes.getContent());
+    _t('getRekapJurnalKelas tanpa kelas_id (bukan wali kelas) DITOLAK jelas', !kelasBody.ok, kelasBody.error);
+  }
+}
+
 // ── 6.5 Pagination & Filter Admin ──────────────────────────────
 
 function testPaginationDanFilter(loginResults) {
@@ -570,7 +641,14 @@ function testPaginationDanFilter(loginResults) {
     _t('getJadwalKelasPublik', false, 'tidak ada kelas untuk ditest');
   }
 
-  // getJadwalPerGuru — endpoint baru untuk admin lihat jadwal 1 guru
+  // getJadwalPerGuru — endpoint untuk admin (guru manapun) ATAU guru
+  // sendiri (dipakai menu "Jadwal Saya") lihat jadwal 1 guru.
+  // [FIX 2026-09-17] Test sebelumnya SALAH mengasumsikan endpoint ini
+  // admin-only dan menolak akses guru sendiri. Itu bertentangan dengan
+  // keputusan arsitektur yang SUDAH DISENGAJA (lihat komentar di
+  // actionGetJadwalPerGuru, Data.gs): guru BOLEH lihat jadwalnya sendiri.
+  // Assertion diperbaiki jadi: akses diri sendiri HARUS berhasil, akses ke
+  // guru LAIN (bukan admin, bukan diri sendiri) yang HARUS ditolak.
   if (loginResults.guru.guru_id) {
     var jpgRes = actionGetJadwalPerGuru({ guru_id: loginResults.guru.guru_id }, loginResults.admin);
     var jpgBody = JSON.parse(jpgRes.getContent());
@@ -579,10 +657,20 @@ function testPaginationDanFilter(loginResults) {
       jpgBody.data.jadwal_per_hari.length === 6, // 6 hari SENIN-SABTU
       jpgBody.ok ? 'jumlah hari=' + jpgBody.data.jadwal_per_hari.length : jpgBody.error);
 
-    // Guru biasa TIDAK BOLEH akses endpoint ini (admin only)
-    var jpgGuruRes = actionGetJadwalPerGuru({ guru_id: loginResults.guru.guru_id }, loginResults.guru);
-    var jpgGuruBody = JSON.parse(jpgGuruRes.getContent());
-    _t('getJadwalPerGuru DITOLAK untuk guru biasa', !jpgGuruBody.ok, jpgGuruBody.error);
+    // Guru BOLEH akses jadwalnya SENDIRI (dipakai menu "Jadwal Saya")
+    var jpgSelfRes = actionGetJadwalPerGuru({ guru_id: loginResults.guru.guru_id }, loginResults.guru);
+    var jpgSelfBody = JSON.parse(jpgSelfRes.getContent());
+    _t('getJadwalPerGuru (guru lihat jadwal sendiri) berhasil', jpgSelfBody.ok,
+      jpgSelfBody.ok ? '' : jpgSelfBody.error);
+
+    // Guru TIDAK BOLEH lihat jadwal guru LAIN (hanya admin atau diri sendiri)
+    if (loginResults.wali && loginResults.wali.guru_id && loginResults.wali.guru_id !== loginResults.guru.guru_id) {
+      var jpgLainRes = actionGetJadwalPerGuru({ guru_id: loginResults.guru.guru_id }, loginResults.wali);
+      var jpgLainBody = JSON.parse(jpgLainRes.getContent());
+      _t('getJadwalPerGuru DITOLAK untuk guru LAIN (bukan admin/diri sendiri)', !jpgLainBody.ok, jpgLainBody.error);
+    } else {
+      TEST_LOG.push('   ℹ️ Lewati test cross-guru getJadwalPerGuru — tidak ada session wali kelas lain dengan guru_id berbeda untuk dites');
+    }
   }
 }
 

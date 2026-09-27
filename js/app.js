@@ -402,6 +402,31 @@ function bindCharCounter(id, max) {
   update();
 }
 
+// [BARU 2026-09-19] Sub-tab 2 segmen — dipakai di Jurnal Saya (Guru),
+// Jurnal Kelas (Wali Kelas), Admin Jurnal Guru: pisahkan "daftar jurnal"
+// dari "export mingguan" jadi 2 tab, bukan digabung atas-bawah di 1 halaman
+// panjang (sebelumnya bikin bingung — kartu export nyempil di tengah/bawah
+// daftar jurnal harian).
+function subtabBarHtml(tabs, activeKey) {
+  return '<div class="subtab-bar">' + tabs.map(function(t) {
+    return '<button type="button" class="subtab-btn' + (t.key === activeKey ? ' active' : '') + '" data-tab="' + t.key + '">' + esc(t.label) + '</button>';
+  }).join('') + '</div>';
+}
+
+// route+baseParams dipakai untuk navigate() ulang dengan tab baru — baseParams
+// JANGAN termasuk 'tab' (akan ditimpa). isBack:true supaya klik ganti tab
+// TIDAK menambah entry baru ke navStack (tombol "Kembali" harus keluar dari
+// halaman ini, bukan bolak-balik antar tab).
+function bindSubtabBar(route, baseParams, activeKey) {
+  document.querySelectorAll('.subtab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (btn.dataset.tab === activeKey) return;
+      var params = Object.assign({}, baseParams, { tab: btn.dataset.tab });
+      navigate(route, params, { isBack: true });
+    });
+  });
+}
+
 function exportPdfCardHtml(idPrefix, anchorDate) {
   var monday = mondayOfWeek(anchorDate || todayStr());
   var saturday = addDaysStr(monday, 5);
@@ -494,16 +519,9 @@ var PDF_WARNA = {
   merah: [190, 18, 60], merahBg: [255, 228, 230],
 };
 
-function _pdfWarnaKehadiran(jenis) {
-  if (jenis === 'sakit') return { fg: PDF_WARNA.amber, bg: PDF_WARNA.amberBg };
-  if (jenis === 'izin')  return { fg: PDF_WARNA.indigo, bg: PDF_WARNA.indigoBg };
-  if (jenis === 'alpa')  return { fg: PDF_WARNA.merah, bg: PDF_WARNA.merahBg };
-  return { fg: PDF_WARNA.hijau, bg: PDF_WARNA.hijauBg }; // hadir/default
-}
-
-// Gambar 1 chip/badge kecil rounded — return lebar yang dipakai supaya bisa
-// disusun berderet dengan gap oleh pemanggil.
 function _pdfChip(doc, x, y, teks, bg, warnaTeks, fontSize) {
+  // Gambar 1 chip/badge kecil rounded — return lebar yang dipakai supaya
+  // bisa disusun berderet dengan gap oleh pemanggil.
   fontSize = fontSize || 8;
   doc.setFont(undefined, 'bold');
   doc.setFontSize(fontSize);
@@ -590,6 +608,27 @@ function _pdfBlokLabel(doc, x, y, labelTeks, bodyLines, lineH, fontSizeBody) {
 
 // ── Ukur & gambar 1 BARIS sesi (penuh lebar, dalam = kiri 70% / kanan 30%) ──
 
+// [REDESAIN 2026-09-21 — koreksi dari user] Percobaan sebelumnya (kolom
+// Kehadiran dibatasi plafon = tinggi teoritis materi 700 + catatan 200
+// karakter) TERNYATA MASIH KURANG: kenyataan di lapangan, jumlah siswa
+// tidak hadir TIDAK ADA HUBUNGANNYA dengan panjang materi/catatan yang
+// ditulis guru — bisa saja materi cuma 70 karakter tapi yang tidak hadir
+// belasan siswa (atau sebaliknya, materi 700 karakter tapi semua hadir).
+// Menyamakan plafon kehadiran ke tinggi materi/catatan artifisial &
+// gampang kepotong padahal ruang halaman masih longgar (baris lain di
+// sekitarnya sudah pasti lebih pendek, apalagi 1 baris = 1 sesi penuh
+// lebar, TIDAK ada lagi masalah "2 kartu berdampingan beda tinggi" dari
+// desain sebelum-sebelumnya). Jadi SEKARANG: kolom Kehadiran BEBAS
+// tumbuh sepenuhnya sesuai jumlah nama yang perlu ditampilkan (SEMUA
+// nama, bukan potongan), baris mengikuti kolom mana pun yang lebih
+// tinggi (Materi+Catatan ATAU Kehadiran). Blur/fade cuma jadi katup
+// pengaman TERAKHIR untuk kasus benar-benar ekstrem (lihat
+// PDF_KEHADIRAN_MAKS_ABSOLUT) yang nyaris tidak pernah kena di pemakaian
+// normal.
+var PDF_KEHADIRAN_LABEL_H = 11;
+var PDF_KEHADIRAN_TOTAL_H = 13;
+var PDF_KEHADIRAN_MAKS_ABSOLUT = 420; // katup pengaman mutlak, BUKAN terkait materi — cuma jaga-jaga 1 baris tidak sampai merusak tata letak halaman kalau suatu saat ada puluhan siswa tidak hadir sekaligus dalam 1 sesi
+
 function _pdfUkurBarisSesi(doc, item, lebarKiri, lebarKanan) {
   var lineH = 10.3;
   doc.setFont(undefined, 'normal'); doc.setFontSize(8.3);
@@ -600,32 +639,127 @@ function _pdfUkurBarisSesi(doc, item, lebarKiri, lebarKanan) {
   var tinggiKiri = 9.5 + materiLines.length * lineH + 5;
   if (catatanLines.length) tinggiKiri += 9.5 + catatanLines.length * lineH + 5;
 
-  // Kolom kanan: label + baris status kehadiran (stack) + "dari total N" + tidak hadir
-  var kh = item.kehadiran;
-  var jumlahStatus = 1; // Hadir selalu ditampilkan
-  ['sakit', 'izin', 'alpa'].forEach(function(k) { if (kh[k] > 0) jumlahStatus++; });
-  var tidakHadirDetail = item.tidak_hadir_detail || [];
-  doc.setFontSize(7.2);
-  var tidakHadirLineCount = 0;
-  var tidakHadirWrapped = tidakHadirDetail.map(function(t) {
-    var teks = 'NIS ' + t.nis + ' — ' + t.nama + ' (' + t.status + ')';
-    var wrapped = doc.splitTextToSize(teks, lebarKanan);
-    tidakHadirLineCount += wrapped.length;
-    return wrapped;
+  // Kolom kanan: hitung tinggi kalau SEMUA nama tidak-hadir ditampilkan utuh
+  var kelompok = _pdfKelompokkanTidakHadir(item.tidak_hadir_detail);
+  doc.setFont(undefined, 'normal'); doc.setFontSize(7);
+  var totalBarisKanan = 0;
+  kelompok.forEach(function(g) {
+    var teks = g.label + ' (' + g.nama.length + '): ' + g.nama.join(', ');
+    totalBarisKanan += doc.splitTextToSize(teks, lebarKanan).length;
   });
+  var tinggiKananPenuh = PDF_KEHADIRAN_LABEL_H + totalBarisKanan * 9 + PDF_KEHADIRAN_TOTAL_H;
+  var tinggiKananDipakai = Math.min(tinggiKananPenuh, PDF_KEHADIRAN_MAKS_ABSOLUT);
 
-  var tinggiKanan = 9.5 + jumlahStatus * 11.5 + 4 + 9; // label + status + gap + "dari total N siswa"
-  if (tidakHadirDetail.length) tinggiKanan += 4 + tidakHadirLineCount * 9.5;
+  // Baris mengikuti kolom mana pun yang lebih tinggi — TIDAK ADA plafon
+  // yang terkait materi/catatan lagi.
+  var tinggiIsi = Math.max(tinggiKiri, tinggiKananDipakai);
+  var kananTerpotong = tinggiKananPenuh > tinggiKananDipakai + 0.01;
 
-  var tinggiIsi = Math.max(tinggiKiri, tinggiKanan);
   var chipRowH = 12 + 6;
   var padAtasBawah = 8 * 2;
   var height = padAtasBawah + chipRowH + tinggiIsi;
 
   return {
     height: height, lineH: lineH, materiLines: materiLines, catatanLines: catatanLines,
-    jumlahStatus: jumlahStatus, tidakHadirWrapped: tidakHadirWrapped,
+    tinggiIsi: tinggiIsi, kelompok: kelompok, kananTerpotong: kananTerpotong,
   };
+}
+
+// Efek "blur/transparansi" untuk menutup teks yang kepotong di ujung area
+// terbatas — beberapa strip putih ditumpuk dengan opacity makin pekat ke
+// bawah, supaya teks memudar alih-alih terpotong tegas. Kalau versi jsPDF
+// yang dipakai user entah kenapa tidak dukung GState (opacity), otomatis
+// jatuh ke penutup polos (tetap rapi, cuma tanpa efek fade-nya).
+function _pdfEfekFade(doc, x, yAtas, lebar, tinggi) {
+  try {
+    var steps = 5;
+    for (var i = 0; i < steps; i++) {
+      doc.setGState(new doc.GState({ opacity: (i + 1) / steps }));
+      doc.setFillColor(253, 253, 254);
+      doc.rect(x, yAtas + (tinggi / steps) * i, lebar, tinggi / steps + 0.5, 'F');
+    }
+    doc.setGState(new doc.GState({ opacity: 1 }));
+  } catch (e) {
+    doc.setFillColor(253, 253, 254);
+    doc.rect(x, yAtas, lebar, tinggi, 'F');
+  }
+}
+
+// Kelompokkan tidak_hadir_detail per status → "Sakit (3): Andre, Dimas, Farhan"
+// [FIX 2026-09-20] Sebelumnya dikelompokkan pakai key HARDCODE
+// 'sakit'/'izin'/'alpa' — kalau nilai status di data sedikit beda (spasi,
+// "Alpha" bukan "Alpa", dst), grup jadi KOSONG TOTAL dan nama siswa tidak
+// hadir SAMA SEKALI TIDAK MUNCUL di PDF (cuma baris total yang tampil,
+// karena itu dihitung terpisah dari jumlah baris, bukan dari status).
+// Sekarang dikelompokkan APA ADANYA dari status yang benar-benar ada di
+// data (dicocokkan longgar pakai "dimulai dengan" ke 3 status baku untuk
+// urutan+warna, status lain di luar itu tetap ditampilkan apa adanya,
+// bukan didiamkan/dibuang).
+function _pdfKelompokkanTidakHadir(detailList) {
+  var urutanBaku = ['sakit', 'izin', 'alpa'];
+  var warnaBaku = { sakit: PDF_WARNA.amber, izin: PDF_WARNA.indigo, alpa: PDF_WARNA.merah };
+  var map = {};
+  var urutanMuncul = [];
+  (detailList || []).forEach(function(t) {
+    var labelAsli = String(t.status || '-').trim() || '-';
+    var norm = labelAsli.toLowerCase();
+    if (norm.indexOf('sakit') === 0) norm = 'sakit';
+    else if (norm.indexOf('izin') === 0) norm = 'izin';
+    else if (norm.indexOf('alp') === 0) norm = 'alpa';
+    if (!map[norm]) { map[norm] = { label: labelAsli, nama: [] }; urutanMuncul.push(norm); }
+    map[norm].nama.push(t.nama);
+  });
+  var hasil = [];
+  urutanBaku.forEach(function(k) { if (map[k]) hasil.push({ label: map[k].label, nama: map[k].nama, warna: warnaBaku[k] }); });
+  urutanMuncul.forEach(function(k) {
+    if (urutanBaku.indexOf(k) === -1) hasil.push({ label: map[k].label, nama: map[k].nama, warna: PDF_WARNA.abuTeks });
+  });
+  return hasil;
+}
+
+// grup & kananTerpotong sudah dihitung sekali di _pdfUkurBarisSesi (supaya
+// tidak dihitung ulang + supaya keputusan "perlu fade atau tidak" konsisten
+// dengan tinggi baris yang sudah ditetapkan). statusBlokTinggi = ruang
+// yang BENAR-BENAR tersedia untuk daftar nama pada baris ini (mengikuti
+// tinggi baris aktual, BUKAN konstanta tetap lagi).
+function _pdfGambarKehadiranKanan(doc, xKanan, yTop, lebarKanan, item, statusBlokTinggi, kelompok, kananTerpotong) {
+  var kh = item.kehadiran;
+
+  doc.setFont(undefined, 'bold'); doc.setFontSize(6.8);
+  doc.setTextColor(PDF_WARNA.abuMuted[0], PDF_WARNA.abuMuted[1], PDF_WARNA.abuMuted[2]);
+  doc.text('KEHADIRAN', xKanan, yTop + 6.5);
+  doc.setTextColor(0, 0, 0);
+
+  var yBlokAtas = yTop + PDF_KEHADIRAN_LABEL_H;
+  var yBlokBawah = yBlokAtas + statusBlokTinggi;
+
+  doc.setFont(undefined, 'normal'); doc.setFontSize(7);
+  var cy = yBlokAtas;
+  var terpotong = false;
+  for (var i = 0; i < kelompok.length && !terpotong; i++) {
+    var g = kelompok[i];
+    var teks = g.label + ' (' + g.nama.length + '): ' + g.nama.join(', ');
+    var wrapped = doc.splitTextToSize(teks, lebarKanan);
+    doc.setTextColor(g.warna[0], g.warna[1], g.warna[2]);
+    for (var j = 0; j < wrapped.length; j++) {
+      if (cy + 9 > yBlokBawah + 0.01) { terpotong = true; break; }
+      doc.text(wrapped[j], xKanan, cy + 6.5);
+      cy += 9;
+    }
+  }
+  doc.setTextColor(0, 0, 0);
+
+  // Fade HANYA kalau daftar memang tidak muat (kananTerpotong dari
+  // _pdfUkurBarisSesi) — kalau muat penuh, ditampilkan utuh tanpa efek apa pun.
+  if (kananTerpotong || terpotong) _pdfEfekFade(doc, xKanan - 1, yBlokBawah - 16, lebarKanan + 2, 16);
+
+  // Baris total — SELALU di posisi tetap, tidak pernah terpotong
+  var tidakHadir = kh.total - kh.hadir;
+  doc.setFont(undefined, 'bold'); doc.setFontSize(7.2);
+  doc.setTextColor(PDF_WARNA.navy[0], PDF_WARNA.navy[1], PDF_WARNA.navy[2]);
+  var totalLines = doc.splitTextToSize('Tidak Hadir ' + tidakHadir + ' · Hadir ' + kh.hadir + ' dari ' + kh.total + ' siswa', lebarKanan);
+  doc.text(totalLines, xKanan, yBlokBawah + 9);
+  doc.setTextColor(0, 0, 0);
 }
 
 function _pdfGambarBarisSesi(doc, x, y, width, item, chip2Label, uk) {
@@ -658,37 +792,10 @@ function _pdfGambarBarisSesi(doc, x, y, width, item, chip2Label, uk) {
   doc.setDrawColor(PDF_WARNA.abuBorder[0], PDF_WARNA.abuBorder[1], PDF_WARNA.abuBorder[2]);
   doc.line(xKanan - colGap / 2, yIsi - 2, xKanan - colGap / 2, y + uk.height - pad);
 
-  // Kolom kanan (30%): Kehadiran
-  var yKanan = yIsi;
-  doc.setFont(undefined, 'bold'); doc.setFontSize(6.8);
-  doc.setTextColor(PDF_WARNA.abuMuted[0], PDF_WARNA.abuMuted[1], PDF_WARNA.abuMuted[2]);
-  doc.text('KEHADIRAN', xKanan, yKanan + 6.5);
-  yKanan += 11;
-
-  var kh = item.kehadiran;
-  [['hadir', kh.hadir + ' Hadir'], ['sakit', kh.sakit + ' Sakit'], ['izin', kh.izin + ' Izin'], ['alpa', kh.alpa + ' Alpa']]
-    .forEach(function(pair) {
-      if (pair[0] !== 'hadir' && kh[pair[0]] === 0) return;
-      _pdfChip(doc, xKanan, yKanan, pair[1], _pdfWarnaKehadiran(pair[0]).bg, _pdfWarnaKehadiran(pair[0]).fg, 7);
-      yKanan += 11.5;
-    });
-  yKanan += 3;
-  doc.setFont(undefined, 'normal'); doc.setFontSize(7);
-  doc.setTextColor(PDF_WARNA.abuMuted[0], PDF_WARNA.abuMuted[1], PDF_WARNA.abuMuted[2]);
-  doc.text('dari total ' + kh.total + ' siswa', xKanan, yKanan + 5);
-  doc.setTextColor(0, 0, 0);
-  yKanan += 9;
-
-  if (uk.tidakHadirWrapped.length) {
-    yKanan += 4;
-    doc.setFontSize(7.2);
-    uk.tidakHadirWrapped.forEach(function(wrapped) {
-      doc.setTextColor(PDF_WARNA.merah[0], PDF_WARNA.merah[1], PDF_WARNA.merah[2]);
-      doc.text(wrapped, xKanan, yKanan + 5.5);
-      yKanan += wrapped.length * 9.5;
-    });
-    doc.setTextColor(0, 0, 0);
-  }
+  // Kolom kanan (30%): Kehadiran — tinggi mengikuti tinggi baris aktual
+  // (lihat _pdfUkurBarisSesi), bukan konstanta tetap lagi.
+  var statusBlokTinggi = uk.tinggiIsi - PDF_KEHADIRAN_LABEL_H - PDF_KEHADIRAN_TOTAL_H;
+  _pdfGambarKehadiranKanan(doc, xKanan, yIsi, lebarKanan, item, statusBlokTinggi, uk.kelompok, uk.kananTerpotong);
 }
 
 function _pdfKelompokkanPerHari(items) {
@@ -800,6 +907,213 @@ function _rekapPdfBeriNomorHalaman(doc) {
 
 function kehadiranSingkat(k) {
   return k.hadir + 'H · ' + k.sakit + 'S · ' + k.izin + 'I · ' + k.alpa + 'A';
+}
+
+// ══════════════════════════════════════════════════════════════
+// [BARU 2026-09-21] Export Jadwal Mingguan (Guru & Kelas) → PDF
+//
+// Beda total dari mesin PDF rekap jurnal di atas — ini timetable klasik:
+// kolom = hari (Senin-Sabtu), baris = jam ke-, tiap sel = mapel + pihak
+// lain (kelas untuk jadwal guru, guru untuk jadwal kelas), diwarnai per
+// mapel supaya "hidup" dan gampang di-scan sekali lihat (bukan cuma teks
+// polos). Landscape A4 — timetable mingguan jauh lebih lebar dari tinggi.
+//
+// Sumber data: getJadwalPerGuru (sudah ada) & getJadwalPerKelas (baru,
+// Data.gs) — bentuk responsnya SAMA (jadwal_per_hari per hari, tiap item
+// {mapel_id, nama_mapel, jam_ids, jam_label, + nama_kelas ATAU nama_guru}),
+// jadi mesin gambarnya bisa 1 dipakai bersama.
+// ══════════════════════════════════════════════════════════════
+
+var PDF_PALET_MAPEL = [
+  { bg: [219, 234, 254], fg: [29, 78, 216] },   // biru
+  { bg: [220, 252, 231], fg: [21, 128, 61] },   // hijau
+  { bg: [255, 237, 213], fg: [194, 65, 12] },   // oranye
+  { bg: [237, 233, 254], fg: [109, 40, 217] },  // ungu
+  { bg: [255, 228, 230], fg: [190, 18, 60] },   // merah muda
+  { bg: [204, 251, 241], fg: [15, 118, 110] },  // teal
+  { bg: [254, 249, 195], fg: [133, 77, 14] },   // kuning
+  { bg: [252, 231, 243], fg: [190, 24, 93] },   // pink
+  { bg: [224, 242, 254], fg: [3, 105, 161] },   // sky
+  { bg: [236, 252, 203], fg: [77, 124, 15] },   // lime
+];
+
+// warnaMap: object kosong {} dilewatkan pemanggil, dipakai sebagai memo
+// supaya 1 mapel selalu dapat warna yang SAMA di seluruh PDF (bukan acak
+// ulang tiap dipanggil).
+function _pdfWarnaMapel(warnaMap, mapelId) {
+  if (!warnaMap[mapelId]) {
+    var i = Object.keys(warnaMap).length % PDF_PALET_MAPEL.length;
+    warnaMap[mapelId] = PDF_PALET_MAPEL[i];
+  }
+  return warnaMap[mapelId];
+}
+
+var PDF_HARI_URUTAN = ['SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
+var PDF_HARI_SINGKAT = { SENIN: 'SENIN', SELASA: 'SELASA', RABU: 'RABU', KAMIS: 'KAMIS', JUMAT: 'JUMAT', SABTU: 'SABTU' };
+
+// opts: { data (jadwal_per_hari), namaSekolah, judul, pihakLabel, pihakNama, chip2Getter, namaFile }
+function _pdfBangunGridJadwal(opts) {
+  var doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+  var namaSekolah = (appConfig && appConfig.nama_sekolah) ? appConfig.nama_sekolah : 'SMP Muhammadiyah 2 Cilacap';
+  var pageW = doc.internal.pageSize.getWidth();
+  var pageH = doc.internal.pageSize.getHeight();
+  var marginX = 28, marginTop = 24, marginBottom = 30;
+  var contentW = pageW - marginX * 2;
+
+  var y = marginTop;
+  y = _pdfHeaderDokumen(doc, marginX, y, contentW, namaSekolah, opts.judul, opts.pihakLabel + ': ' + opts.pihakNama);
+
+  // Susun data per hari + cari jam maksimal SESUNGGUHNYA dari isi jadwal
+  // (bukan dari config) — supaya grid selalu pas dengan data yang ada.
+  var perHari = {};
+  var jamMaks = 0;
+  var warnaMap = {};
+  (opts.data || []).forEach(function(hb) {
+    perHari[hb.hari] = hb.jadwal || [];
+    (hb.jadwal || []).forEach(function(item) {
+      (item.jam_ids || []).forEach(function(jid) {
+        var n = parseInt(String(jid).replace('J', ''), 10);
+        if (n > jamMaks) jamMaks = n;
+      });
+      _pdfWarnaMapel(warnaMap, item.mapel_id); // daftarkan warna dari awal, supaya urutan warna konsisten
+    });
+  });
+  if (jamMaks < 1) jamMaks = 8;
+
+  // Grid: kolom "Jam" (kiri) + 6 kolom hari
+  var kolJamW = 40;
+  var kolHariW = (contentW - kolJamW) / PDF_HARI_URUTAN.length;
+  var headerRowH = 22;
+  var ruangTersedia = pageH - y - marginBottom - 44; // 44pt disisakan utk legenda mapel di bawah grid
+  var jamRowH = Math.max(20, Math.min(36, (ruangTersedia - headerRowH) / jamMaks));
+
+  var gridTop = y;
+  var gridLeft = marginX;
+  var gridBottom = gridTop + headerRowH + jamMaks * jamRowH;
+
+  // Header grid (band gelap): "JAM" + nama hari
+  doc.setFillColor(PDF_WARNA.navy[0], PDF_WARNA.navy[1], PDF_WARNA.navy[2]);
+  doc.rect(gridLeft, gridTop, contentW, headerRowH, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont(undefined, 'bold'); doc.setFontSize(8);
+  doc.text('JAM', gridLeft + kolJamW / 2, gridTop + headerRowH / 2 + 3, { align: 'center' });
+  PDF_HARI_URUTAN.forEach(function(h, i) {
+    var hx = gridLeft + kolJamW + i * kolHariW;
+    doc.text(PDF_HARI_SINGKAT[h], hx + kolHariW / 2, gridTop + headerRowH / 2 + 3, { align: 'center' });
+  });
+  doc.setTextColor(0, 0, 0);
+
+  // Kolom "Jam" (nomor 1..jamMaks) di kiri
+  for (var j = 1; j <= jamMaks; j++) {
+    var ry = gridTop + headerRowH + (j - 1) * jamRowH;
+    doc.setFillColor(PDF_WARNA.abuBg[0], PDF_WARNA.abuBg[1], PDF_WARNA.abuBg[2]);
+    doc.setDrawColor(PDF_WARNA.abuBorder[0], PDF_WARNA.abuBorder[1], PDF_WARNA.abuBorder[2]);
+    doc.rect(gridLeft, ry, kolJamW, jamRowH, 'FD');
+    doc.setFont(undefined, 'bold'); doc.setFontSize(8.5);
+    doc.setTextColor(PDF_WARNA.abuTeks[0], PDF_WARNA.abuTeks[1], PDF_WARNA.abuTeks[2]);
+    doc.text(String(j), gridLeft + kolJamW / 2, ry + jamRowH / 2 + 3, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+  }
+
+  // Garis dasar grid kosong (border tiap sel) per hari, digambar dulu di
+  // BAWAH supaya sel jadwal berwarna di atas garis-garis ini kelihatan rapi.
+  PDF_HARI_URUTAN.forEach(function(h, i) {
+    var hx = gridLeft + kolJamW + i * kolHariW;
+    doc.setDrawColor(PDF_WARNA.abuBorder[0], PDF_WARNA.abuBorder[1], PDF_WARNA.abuBorder[2]);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(hx, gridTop + headerRowH, kolHariW, jamMaks * jamRowH, 'FD');
+    for (var jj = 1; jj < jamMaks; jj++) {
+      var lineY = gridTop + headerRowH + jj * jamRowH;
+      doc.line(hx, lineY, hx + kolHariW, lineY);
+    }
+  });
+
+  // Gambar sel jadwal berwarna (1 sel bisa merentang beberapa baris jam
+  // sekaligus kalau blok jamnya berurutan, mis. "Jam 2-3" → 1 sel tinggi
+  // 2 baris, bukan 2 sel terpisah — ini yang bikin tampilannya seperti
+  // timetable sungguhan, bukan daftar).
+  PDF_HARI_URUTAN.forEach(function(h, i) {
+    var hx = gridLeft + kolJamW + i * kolHariW;
+    (perHari[h] || []).forEach(function(item) {
+      var nums = (item.jam_ids || []).map(function(id) { return parseInt(String(id).replace('J', ''), 10); }).sort(function(a, b) { return a - b; });
+      if (!nums.length) return;
+      var jamMin = nums[0], jamMax = nums[nums.length - 1];
+      if (jamMin > jamMaks) return;
+      var cellY = gridTop + headerRowH + (jamMin - 1) * jamRowH;
+      var cellH = (Math.min(jamMax, jamMaks) - jamMin + 1) * jamRowH;
+      var warna = _pdfWarnaMapel(warnaMap, item.mapel_id);
+
+      doc.setFillColor(warna.bg[0], warna.bg[1], warna.bg[2]);
+      doc.roundedRect(hx + 2, cellY + 2, kolHariW - 4, cellH - 4, 3, 3, 'F');
+
+      var pihak2 = opts.chip2Getter(item);
+      doc.setTextColor(warna.fg[0], warna.fg[1], warna.fg[2]);
+      doc.setFont(undefined, 'bold'); doc.setFontSize(7.3);
+      var mapelLines = doc.splitTextToSize(item.nama_mapel || '-', kolHariW - 10);
+      var maksBarisMapel = Math.max(1, Math.floor((cellH - 14) / 9));
+      if (mapelLines.length > maksBarisMapel) mapelLines = mapelLines.slice(0, maksBarisMapel);
+      var totalTinggiTeks = mapelLines.length * 9 + (pihak2 ? 9 : 0);
+      var ty = cellY + cellH / 2 - totalTinggiTeks / 2 + 7;
+      doc.text(mapelLines, hx + kolHariW / 2, ty, { align: 'center' });
+
+      if (pihak2) {
+        doc.setFont(undefined, 'normal'); doc.setFontSize(6.6);
+        var pihak2Lines = doc.splitTextToSize(pihak2, kolHariW - 10);
+        doc.text(pihak2Lines[0], hx + kolHariW / 2, ty + mapelLines.length * 9 + 2, { align: 'center' });
+      }
+      doc.setTextColor(0, 0, 0);
+    });
+  });
+
+  // Legenda warna mapel di bawah grid
+  var legendY = gridBottom + 14;
+  doc.setFont(undefined, 'bold'); doc.setFontSize(7);
+  doc.setTextColor(PDF_WARNA.abuMuted[0], PDF_WARNA.abuMuted[1], PDF_WARNA.abuMuted[2]);
+  doc.text('MATA PELAJARAN', gridLeft, legendY);
+  doc.setTextColor(0, 0, 0);
+  var lx = gridLeft, ly = legendY + 12;
+  var namaMapelById = {};
+  (opts.data || []).forEach(function(hb) {
+    (hb.jadwal || []).forEach(function(item) { namaMapelById[item.mapel_id] = item.nama_mapel; });
+  });
+  Object.keys(warnaMap).forEach(function(mapelId) {
+    var warna = warnaMap[mapelId];
+    var teks = namaMapelById[mapelId] || mapelId;
+    doc.setFont(undefined, 'normal'); doc.setFontSize(7);
+    var w = doc.getTextWidth(teks) + 18;
+    if (lx + w > gridLeft + contentW) { lx = gridLeft; ly += 13; }
+    doc.setFillColor(warna.bg[0], warna.bg[1], warna.bg[2]);
+    doc.roundedRect(lx, ly - 7, 10, 10, 2, 2, 'F');
+    doc.setTextColor(PDF_WARNA.abuTeks[0], PDF_WARNA.abuTeks[1], PDF_WARNA.abuTeks[2]);
+    doc.text(teks, lx + 14, ly + 1);
+    doc.setTextColor(0, 0, 0);
+    lx += w + 8;
+  });
+
+  _rekapPdfBeriNomorHalaman(doc);
+  doc.save(opts.namaFile);
+}
+
+function buildJadwalGuruPdf(data) {
+  _pdfBangunGridJadwal({
+    data: data.jadwal_per_hari,
+    judul: 'Jadwal Mengajar Mingguan',
+    pihakLabel: 'Guru',
+    pihakNama: data.nama_guru,
+    chip2Getter: function(it) { return it.nama_kelas; },
+    namaFile: 'Jadwal-Guru-' + String(data.nama_guru || '').replace(/[^a-zA-Z0-9]+/g, '-') + '.pdf',
+  });
+}
+
+function buildJadwalKelasPdf(data) {
+  _pdfBangunGridJadwal({
+    data: data.jadwal_per_hari,
+    judul: 'Jadwal Pelajaran Kelas',
+    pihakLabel: 'Kelas',
+    pihakNama: data.nama_kelas,
+    chip2Getter: function(it) { return it.nama_guru; },
+    namaFile: 'Jadwal-Kelas-' + String(data.nama_kelas || '').replace(/[^a-zA-Z0-9]+/g, '-') + '.pdf',
+  });
 }
 
 // ── Salin ke clipboard + kotak fallback manual (dipakai fitur Prompt AI) ──
@@ -1494,6 +1808,9 @@ var jurnalSayaCache = {}; // in-memory per "bulan_page" — lihat staleWhileReva
 var BULAN_NAMA = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
 function viewJurnalSaya(params) {
+  var tab = params.tab || 'list';
+  if (tab === 'export') { viewJurnalSayaExport(); return; }
+
   if (params.page) jurnalSayaPage = params.page;
   else jurnalSayaPage = 1;
 
@@ -1515,10 +1832,44 @@ function viewJurnalSaya(params) {
   );
 }
 
-function renderJurnalSayaHtml(d, updating) {
-  var html = '<div class="sec-title">Riwayat Jurnal Saya (' + d.totalItems + ')</div>';
-  if (updating) html += '<div class="quiet-sync-note"><span class="dot"></span>Memperbarui data terbaru…</div>';
+var JURNAL_SAYA_TABS = [
+  { key: 'list', label: 'Jurnal Saya' },
+  { key: 'export', label: 'Export Jurnal Mingguan' },
+];
+
+// Tab 2: "Export Jurnal Mingguan" — halaman TERPISAH, cuma berisi kartu
+// export (tidak lagi nyempil di antara daftar jurnal harian).
+function viewJurnalSayaExport() {
+  var html = subtabBarHtml(JURNAL_SAYA_TABS, 'export');
   html += exportPdfCardHtml('exportGuru', todayStr());
+  $main.innerHTML = html;
+  bindSubtabBar('jurnal-saya', {}, 'export');
+
+  bindExportPdfCard('exportGuru', {
+    pdf: function(mulai, selesai) {
+      return API.call('getRekapJurnalGuru', { tanggal_mulai: mulai, tanggal_selesai: selesai }, 'GET')
+        .then(function(res) {
+          if (!res.ok) throw new Error(res.error || 'Gagal mengambil data rekap');
+          buildRekapPdfGuru(res.data);
+          showToast('PDF rekap jurnal berhasil dibuat ✓');
+        });
+    },
+    prompt: function(mulai, selesai) {
+      return API.call('getRekapJurnalGuru', { tanggal_mulai: mulai, tanggal_selesai: selesai }, 'GET')
+        .then(function(res) {
+          if (!res.ok) throw new Error(res.error || 'Gagal mengambil data rekap');
+          var teks = buildPromptJurnalGuru(res.data);
+          tampilkanPromptBox('exportGuru', teks);
+          return salinKeClipboard(teks);
+        });
+    },
+  });
+}
+
+function renderJurnalSayaHtml(d, updating) {
+  var html = subtabBarHtml(JURNAL_SAYA_TABS, 'list');
+  html += '<div class="sec-title">Riwayat Jurnal Saya (' + d.totalItems + ')</div>';
+  if (updating) html += '<div class="quiet-sync-note"><span class="dot"></span>Memperbarui data terbaru…</div>';
   html += '<div class="month-filter">';
   html += '<button type="button" id="btnSemuaBulan" class="month-filter-all' + (jurnalSayaBulan === '' ? ' active' : '') + '">Semua Bulan</button>';
   html += '<div class="month-filter-select-wrap"><span class="form-label">Bulan</span><select class="select-input" id="selBulanSaya">';
@@ -1542,6 +1893,7 @@ function renderJurnalSayaHtml(d, updating) {
   html += paginationHtml(d);
 
   $main.innerHTML = html;
+  bindSubtabBar('jurnal-saya', {}, 'list');
   document.getElementById('btnSemuaBulan').addEventListener('click', function() {
     jurnalSayaBulan = '';
     navigate('jurnal-saya', { page: 1 });
@@ -1556,26 +1908,6 @@ function renderJurnalSayaHtml(d, updating) {
     });
   });
   bindPagination(d, function(newPage) { navigate('jurnal-saya', { page: newPage }); });
-
-  bindExportPdfCard('exportGuru', {
-    pdf: function(mulai, selesai) {
-      return API.call('getRekapJurnalGuru', { tanggal_mulai: mulai, tanggal_selesai: selesai }, 'GET')
-        .then(function(res) {
-          if (!res.ok) throw new Error(res.error || 'Gagal mengambil data rekap');
-          buildRekapPdfGuru(res.data);
-          showToast('PDF rekap jurnal berhasil dibuat ✓');
-        });
-    },
-    prompt: function(mulai, selesai) {
-      return API.call('getRekapJurnalGuru', { tanggal_mulai: mulai, tanggal_selesai: selesai }, 'GET')
-        .then(function(res) {
-          if (!res.ok) throw new Error(res.error || 'Gagal mengambil data rekap');
-          var teks = buildPromptJurnalGuru(res.data);
-          tampilkanPromptBox('exportGuru', teks);
-          return salinKeClipboard(teks);
-        });
-    },
-  });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1586,8 +1918,12 @@ var jurnalKelasTanggal = todayStr();
 
 var jurnalKelasCache = {}; // in-memory per "kelasId_tanggal" — lihat staleWhileRevalidate
 
+var JURNAL_KELAS_TABS = [
+  { key: 'list', label: 'Jurnal Kelas' },
+  { key: 'export', label: 'Export Mingguan' },
+];
+
 function viewJurnalKelas(params) {
-  if (params.tanggal) jurnalKelasTanggal = params.tanggal;
   var kelasId = params.kelas_id || STATE.waliKelasId;
 
   if (!kelasId) {
@@ -1595,6 +1931,11 @@ function viewJurnalKelas(params) {
     return;
   }
   STATE._kelasIdCtx = kelasId;
+
+  var tab = params.tab || 'list';
+  if (tab === 'export') { viewJurnalKelasExport(kelasId); return; }
+
+  if (params.tanggal) jurnalKelasTanggal = params.tanggal;
 
   var reqKelasId = kelasId;
   var reqTanggal = jurnalKelasTanggal;
@@ -1612,8 +1953,38 @@ function viewJurnalKelas(params) {
   );
 }
 
+// Tab 2: "Export Mingguan" — halaman terpisah, cuma berisi kartu export
+// (sebelumnya nyempil di BAWAH daftar mapel hari itu, sekarang tab sendiri).
+function viewJurnalKelasExport(kelasId) {
+  var html = subtabBarHtml(JURNAL_KELAS_TABS, 'export');
+  html += exportPdfCardHtml('exportKelas', jurnalKelasTanggal);
+  $main.innerHTML = html;
+  bindSubtabBar('jurnal-kelas', {}, 'export');
+
+  bindExportPdfCard('exportKelas', {
+    pdf: function(mulai, selesai) {
+      return API.call('getRekapJurnalKelas', { kelas_id: kelasId, tanggal_mulai: mulai, tanggal_selesai: selesai }, 'GET')
+        .then(function(res) {
+          if (!res.ok) throw new Error(res.error || 'Gagal mengambil data rekap');
+          buildRekapPdfKelas(res.data);
+          showToast('PDF rekap jurnal berhasil dibuat ✓');
+        });
+    },
+    prompt: function(mulai, selesai) {
+      return API.call('getRekapJurnalKelas', { kelas_id: kelasId, tanggal_mulai: mulai, tanggal_selesai: selesai }, 'GET')
+        .then(function(res) {
+          if (!res.ok) throw new Error(res.error || 'Gagal mengambil data rekap');
+          var teks = buildPromptJurnalKelas(res.data);
+          tampilkanPromptBox('exportKelas', teks);
+          return salinKeClipboard(teks);
+        });
+    },
+  });
+}
+
 function renderJurnalKelasHtml(d, updating) {
-  var html = refreshBlockButtonHtml();
+  var html = subtabBarHtml(JURNAL_KELAS_TABS, 'list');
+  html += refreshBlockButtonHtml();
   html += '<div class="wali-info-badge"><i class="fa-solid fa-user"></i> Wali Kelas: ' + esc(d.nama_kelas) + '</div>';
   html += dateBarHtml(jurnalKelasTanggal, 'jurnal-kelas', true);
   if (updating) html += '<div class="quiet-sync-note"><span class="dot"></span>Memperbarui data terbaru…</div>';
@@ -1628,31 +1999,9 @@ function renderJurnalKelasHtml(d, updating) {
     });
   }
 
-  html += exportPdfCardHtml('exportKelas', jurnalKelasTanggal);
-
   $main.innerHTML = html;
+  bindSubtabBar('jurnal-kelas', {}, 'list');
   bindDateBar('jurnal-kelas');
-
-  var kelasIdUtkExport = STATE._kelasIdCtx;
-  bindExportPdfCard('exportKelas', {
-    pdf: function(mulai, selesai) {
-      return API.call('getRekapJurnalKelas', { kelas_id: kelasIdUtkExport, tanggal_mulai: mulai, tanggal_selesai: selesai }, 'GET')
-        .then(function(res) {
-          if (!res.ok) throw new Error(res.error || 'Gagal mengambil data rekap');
-          buildRekapPdfKelas(res.data);
-          showToast('PDF rekap jurnal berhasil dibuat ✓');
-        });
-    },
-    prompt: function(mulai, selesai) {
-      return API.call('getRekapJurnalKelas', { kelas_id: kelasIdUtkExport, tanggal_mulai: mulai, tanggal_selesai: selesai }, 'GET')
-        .then(function(res) {
-          if (!res.ok) throw new Error(res.error || 'Gagal mengambil data rekap');
-          var teks = buildPromptJurnalKelas(res.data);
-          tampilkanPromptBox('exportKelas', teks);
-          return salinKeClipboard(teks);
-        });
-    },
-  });
 }
 
 // [BARU] Ringkasan siswa tidak hadir hari itu (gabungan dari semua mapel yang
@@ -1768,6 +2117,8 @@ function renderJadwalKelasLihatShell(kelasData) {
   });
   html += '</select></div>';
 
+  html += '<button class="btn-secondary" id="btnExportJadwalKelas" type="button" style="margin:10px 0 14px"><i class="fa-solid fa-file-pdf"></i> Export PDF</button>';
+
   html += '<span class="form-label">Pilih Hari</span>';
   html += '<div class="day-tabs" id="hariTabs">';
   hariAktifList().forEach(function(h) {
@@ -1782,6 +2133,26 @@ function renderJadwalKelasLihatShell(kelasData) {
   document.getElementById('selKelas').addEventListener('change', function(e) {
     jadwalLihatState.kelas_id = e.target.value;
     loadJadwalKelasLihat();
+  });
+  document.getElementById('btnExportJadwalKelas').addEventListener('click', function() {
+    if (typeof window.jspdf === 'undefined') {
+      showToast('Library PDF gagal dimuat. Periksa koneksi internet lalu coba lagi.', true);
+      return;
+    }
+    var $btn = document.getElementById('btnExportJadwalKelas');
+    var htmlAsli = $btn.innerHTML;
+    $btn.disabled = true;
+    $btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyiapkan PDF...';
+    API.call('getJadwalPerKelas', { kelas_id: jadwalLihatState.kelas_id }, 'GET').then(function(res) {
+      if (!res.ok) { showToast('Gagal: ' + res.error, true); return; }
+      buildJadwalKelasPdf(res.data);
+      showToast('PDF jadwal berhasil dibuat ✓');
+    }).catch(function(e) {
+      showToast('Gagal: ' + (e && e.message ? e.message : e), true);
+    }).then(function() {
+      $btn.disabled = false;
+      $btn.innerHTML = htmlAsli;
+    });
   });
   document.querySelectorAll('#hariTabs .day-tab').forEach(function(btn) {
     btn.addEventListener('click', function() {
@@ -1865,7 +2236,13 @@ function viewAdminHome(params) {
 
 var adminJurnalFilter = { tanggal: todayStr(), guru_id: '', mapel_id: '', kelas_id: '', page: 1 };
 
+var ADMIN_JURNAL_TABS = [
+  { key: 'list', label: 'Jurnal Guru' },
+  { key: 'export', label: 'Export Mingguan' },
+];
+
 function viewAdminJurnal(params) {
+  var tab = params.tab || 'list';
   showLoading('Memuat data guru, kelas & mapel...');
 
   Promise.all([
@@ -1881,75 +2258,87 @@ function viewAdminJurnal(params) {
     STATE.mapelList = resMapel.data;
     STATE.kelasList = resKelas.data.slice().sort(function(a, b) { return String(a.nama_kelas).localeCompare(String(b.nama_kelas)); });
 
-    var html = '<div class="sec-title">Filter Jurnal (maks. 1 hari per pencarian)</div>';
-    html += '<div class="filter-card">';
-    html += '<div class="form-grid-2">';
-    html += '<div class="form-group"><span class="form-label">Tanggal *</span>';
-    html += '<input type="date" class="select-input" id="filterTanggal" value="' + adminJurnalFilter.tanggal + '"></div>';
-    html += '<div class="form-group"><span class="form-label">Kelas</span>';
-    html += '<select class="select-input" id="filterKelas"><option value="">Semua Kelas</option>';
-    STATE.kelasList.forEach(function(k) {
-      html += '<option value="' + k.kelas_id + '"' + (k.kelas_id === adminJurnalFilter.kelas_id ? ' selected' : '') + '>' + esc(k.nama_kelas) + '</option>';
-    });
-    html += '</select></div>';
-    html += '</div>';
+    if (tab === 'export') { renderAdminJurnalExportTab(); return; }
+    renderAdminJurnalListTab();
+  });
+}
 
-    html += '<div class="form-grid-2" style="margin-top:14px">';
-    html += '<div class="form-group"><span class="form-label">Guru</span>';
-    html += '<select class="select-input" id="filterGuru"><option value="">Semua Guru</option>';
-    STATE.guruList.forEach(function(g) {
-      html += '<option value="' + g.guru_id + '"' + (g.guru_id === adminJurnalFilter.guru_id ? ' selected' : '') + '>' + esc(g.nama) + '</option>';
-    });
-    html += '</select></div>';
+// Tab 2: "Export Mingguan" — halaman terpisah dari filter+daftar jurnal harian.
+function renderAdminJurnalExportTab() {
+  var html = subtabBarHtml(ADMIN_JURNAL_TABS, 'export');
+  html += '<div class="sec-title">Export Rekap Jurnal Mingguan</div>';
+  html += '<div class="filter-card" id="exportAdmin_card">';
+  html += '<div class="form-grid-2">';
+  html += '<div class="form-group"><span class="form-label">Jenis Jurnal</span><select class="select-input" id="exportAdmin_jenis">'
+    + '<option value="guru">Jurnal Guru</option><option value="kelas">Jurnal Kelas</option></select></div>';
+  html += '<div class="form-group"><span class="form-label" id="exportAdmin_targetLabel">Guru</span><select class="select-input" id="exportAdmin_target"></select></div>';
+  html += '</div>';
+  html += '<div class="form-group" style="margin-top:14px"><span class="form-label">Awal Minggu</span>'
+    + '<input type="date" class="select-input" id="exportAdmin_tgl" value="' + mondayOfWeek(todayStr()) + '"></div>';
+  html += '<div class="admin-list-sub" id="exportAdmin_periode" style="margin:8px 0 12px"></div>';
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+  html += '<button class="btn-secondary" id="exportAdmin_btn" type="button"><i class="fa-solid fa-file-pdf"></i> Export PDF</button>';
+  html += '<button class="btn-secondary" id="exportAdmin_btnPrompt" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> Salin Prompt AI</button>';
+  html += '</div>';
+  html += '<div id="exportAdmin_promptBox" style="display:none;margin-top:12px"></div>';
+  html += '</div>';
 
-    html += '<div class="form-group"><span class="form-label">Mapel</span>';
-    html += '<select class="select-input" id="filterMapel"><option value="">Semua Mapel</option>';
-    STATE.mapelList.forEach(function(m) {
-      html += '<option value="' + m.mapel_id + '"' + (m.mapel_id === adminJurnalFilter.mapel_id ? ' selected' : '') + '>' + esc(m.nama) + '</option>';
-    });
-    html += '</select></div>';
-    html += '</div>';
+  $main.innerHTML = html;
+  bindSubtabBar('admin-jurnal', {}, 'export');
+  bindExportAdminCard();
+}
 
-    html += '<button class="btn-primary" id="btnCariJurnal" style="margin-top:14px">Cari</button>';
-    html += '</div>';
+// Tab 1: "Jurnal Guru" — filter + daftar jurnal harian (perilaku sama seperti sebelumnya).
+function renderAdminJurnalListTab() {
+  var html = subtabBarHtml(ADMIN_JURNAL_TABS, 'list');
+  html += '<div class="sec-title">Filter Jurnal (maks. 1 hari per pencarian)</div>';
+  html += '<div class="filter-card">';
+  html += '<div class="form-grid-2">';
+  html += '<div class="form-group"><span class="form-label">Tanggal *</span>';
+  html += '<input type="date" class="select-input" id="filterTanggal" value="' + adminJurnalFilter.tanggal + '"></div>';
+  html += '<div class="form-group"><span class="form-label">Kelas</span>';
+  html += '<select class="select-input" id="filterKelas"><option value="">Semua Kelas</option>';
+  STATE.kelasList.forEach(function(k) {
+    html += '<option value="' + k.kelas_id + '"' + (k.kelas_id === adminJurnalFilter.kelas_id ? ' selected' : '') + '>' + esc(k.nama_kelas) + '</option>';
+  });
+  html += '</select></div>';
+  html += '</div>';
 
-    // [BARU 2026-09-15] Export Rekap Mingguan (PDF) — admin bisa pilih Jurnal
-    // Guru (guru manapun) atau Jurnal Kelas (kelas manapun), memakai daftar
-    // guru/kelas yang sudah dimuat di atas (tidak fetch ulang).
-    html += '<div class="sec-title">Export Rekap Jurnal Mingguan (PDF)</div>';
-    html += '<div class="filter-card" id="exportAdmin_card">';
-    html += '<div class="form-grid-2">';
-    html += '<div class="form-group"><span class="form-label">Jenis Jurnal</span><select class="select-input" id="exportAdmin_jenis">'
-      + '<option value="guru">Jurnal Guru</option><option value="kelas">Jurnal Kelas</option></select></div>';
-    html += '<div class="form-group"><span class="form-label" id="exportAdmin_targetLabel">Guru</span><select class="select-input" id="exportAdmin_target"></select></div>';
-    html += '</div>';
-    html += '<div class="form-group" style="margin-top:14px"><span class="form-label">Awal Minggu</span>'
-      + '<input type="date" class="select-input" id="exportAdmin_tgl" value="' + mondayOfWeek(todayStr()) + '"></div>';
-    html += '<div class="admin-list-sub" id="exportAdmin_periode" style="margin:8px 0 12px"></div>';
-    html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
-    html += '<button class="btn-secondary" id="exportAdmin_btn" type="button"><i class="fa-solid fa-file-pdf"></i> Export PDF</button>';
-    html += '<button class="btn-secondary" id="exportAdmin_btnPrompt" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> Salin Prompt AI</button>';
-    html += '</div>';
-    html += '<div id="exportAdmin_promptBox" style="display:none;margin-top:12px"></div>';
-    html += '</div>';
+  html += '<div class="form-grid-2" style="margin-top:14px">';
+  html += '<div class="form-group"><span class="form-label">Guru</span>';
+  html += '<select class="select-input" id="filterGuru"><option value="">Semua Guru</option>';
+  STATE.guruList.forEach(function(g) {
+    html += '<option value="' + g.guru_id + '"' + (g.guru_id === adminJurnalFilter.guru_id ? ' selected' : '') + '>' + esc(g.nama) + '</option>';
+  });
+  html += '</select></div>';
 
-    html += '<div id="adminJurnalHasil" style="margin-top:16px"></div>';
+  html += '<div class="form-group"><span class="form-label">Mapel</span>';
+  html += '<select class="select-input" id="filterMapel"><option value="">Semua Mapel</option>';
+  STATE.mapelList.forEach(function(m) {
+    html += '<option value="' + m.mapel_id + '"' + (m.mapel_id === adminJurnalFilter.mapel_id ? ' selected' : '') + '>' + esc(m.nama) + '</option>';
+  });
+  html += '</select></div>';
+  html += '</div>';
 
-    $main.innerHTML = html;
+  html += '<button class="btn-primary" id="btnCariJurnal" style="margin-top:14px">Cari</button>';
+  html += '</div>';
 
-    document.getElementById('btnCariJurnal').addEventListener('click', function() {
-      adminJurnalFilter.tanggal = document.getElementById('filterTanggal').value;
-      adminJurnalFilter.guru_id = document.getElementById('filterGuru').value;
-      adminJurnalFilter.mapel_id = document.getElementById('filterMapel').value;
-      adminJurnalFilter.kelas_id = document.getElementById('filterKelas').value;
-      adminJurnalFilter.page = 1;
-      if (!adminJurnalFilter.tanggal) { showToast('Tanggal wajib diisi', true); return; }
-      loadAdminJurnal();
-    });
+  html += '<div id="adminJurnalHasil" style="margin-top:16px"></div>';
 
-    bindExportAdminCard();
+  $main.innerHTML = html;
+  bindSubtabBar('admin-jurnal', {}, 'list');
+
+  document.getElementById('btnCariJurnal').addEventListener('click', function() {
+    adminJurnalFilter.tanggal = document.getElementById('filterTanggal').value;
+    adminJurnalFilter.guru_id = document.getElementById('filterGuru').value;
+    adminJurnalFilter.mapel_id = document.getElementById('filterMapel').value;
+    adminJurnalFilter.kelas_id = document.getElementById('filterKelas').value;
+    adminJurnalFilter.page = 1;
+    if (!adminJurnalFilter.tanggal) { showToast('Tanggal wajib diisi', true); return; }
     loadAdminJurnal();
   });
+
+  loadAdminJurnal();
 }
 
 // Binder khusus panel export admin (jenis Guru/Kelas + target + minggu).
@@ -2154,7 +2543,8 @@ function renderAdminGuruTabs($hasil) {
     adminGuruState.activeHari = hariAktif[0] || 'SENIN';
   }
 
-  var html = '<div class="day-tabs">';
+  var html = '<button class="btn-secondary" id="btnExportJadwalGuruAdmin" type="button" style="margin-bottom:14px"><i class="fa-solid fa-file-pdf"></i> Export PDF</button>';
+  html += '<div class="day-tabs">';
   hariAktif.forEach(function(h) {
     html += '<button class="day-tab' + (h === adminGuruState.activeHari ? ' active' : '') + '" data-hari="' + h + '">'
       + capitalizeHari(h).substring(0, 3) + '</button>';
@@ -2164,6 +2554,15 @@ function renderAdminGuruTabs($hasil) {
   html += '<div id="adminGuruHariContent">' + renderAdminGuruHariContent(jadwalByHari, adminGuruState.activeHari) + '</div>';
 
   $hasil.innerHTML = html;
+
+  document.getElementById('btnExportJadwalGuruAdmin').addEventListener('click', function() {
+    if (typeof window.jspdf === 'undefined') {
+      showToast('Library PDF gagal dimuat. Periksa koneksi internet lalu coba lagi.', true);
+      return;
+    }
+    buildJadwalGuruPdf(d);
+    showToast('PDF jadwal berhasil dibuat ✓');
+  });
 
   $hasil.querySelectorAll('.day-tab').forEach(function(btn) {
     btn.addEventListener('click', function() {
@@ -2244,7 +2643,8 @@ function renderJadwalSayaGuruTabs($hasil) {
     jadwalSayaGuruState.activeHari = hariAktif[0] || 'SENIN';
   }
 
-  var html = '<div class="day-tabs">';
+  var html = '<button class="btn-secondary" id="btnExportJadwalSaya" type="button" style="margin-bottom:14px"><i class="fa-solid fa-file-pdf"></i> Export PDF</button>';
+  html += '<div class="day-tabs">';
   hariAktif.forEach(function(h) {
     html += '<button class="day-tab' + (h === jadwalSayaGuruState.activeHari ? ' active' : '') + '" data-hari="' + h + '">'
       + capitalizeHari(h).substring(0, 3) + '</button>';
@@ -2254,6 +2654,15 @@ function renderJadwalSayaGuruTabs($hasil) {
   html += '<div id="jadwalSayaGuruHariContent">' + renderAdminGuruHariContent(jadwalByHari, jadwalSayaGuruState.activeHari) + '</div>';
 
   $hasil.innerHTML = html;
+
+  document.getElementById('btnExportJadwalSaya').addEventListener('click', function() {
+    if (typeof window.jspdf === 'undefined') {
+      showToast('Library PDF gagal dimuat. Periksa koneksi internet lalu coba lagi.', true);
+      return;
+    }
+    buildJadwalGuruPdf(d);
+    showToast('PDF jadwal berhasil dibuat ✓');
+  });
 
   $hasil.querySelectorAll('.day-tab').forEach(function(btn) {
     btn.addEventListener('click', function() {

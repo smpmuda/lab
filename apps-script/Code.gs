@@ -1,5 +1,5 @@
 // ============================================================
-// Code.gs — Router Utama (doGet / doPost)
+// Code.gs — Router Utama (doGet / doPost) okey
 // Jurnal Mengajar · SMP Muhammadiyah 2 Cilacap
 //
 // Deploy sebagai Web App:
@@ -95,6 +95,7 @@ function handleRequest(e, method) {
     if (action === 'getJadwalGuru')     return actionGetJadwalGuru(params, session);
     if (action === 'getJadwalKelas')    return actionGetJadwalKelas(params, session);
     if (action === 'getJadwalPerGuru')  return actionGetJadwalPerGuru(params, session);
+    if (action === 'getJadwalPerKelas') return actionGetJadwalPerKelas(params, session);
 
     // ── Jurnal ───────────────────────────────────────────────
     if (action === 'createJurnal')      return actionCreateJurnal(body, session);
@@ -102,6 +103,13 @@ function handleRequest(e, method) {
     if (action === 'getJurnalSaya')     return actionGetJurnalSaya(params, session);
     if (action === 'getDetailJurnal')   return actionGetDetailJurnal(params, session);
     if (action === 'getJurnalKelas')    return actionGetJadwalKelas(params, session);
+
+    // ── Rekap Jurnal Mingguan (Export PDF) ────────────────────
+    if (action === 'getRekapJurnalGuru')  return actionGetRekapJurnalGuru(params, session);
+    if (action === 'getRekapJurnalKelas') return actionGetRekapJurnalKelas(params, session);
+
+    // ── Dashboard Kegiatan (BARU 2026-09-26) — semua role login ──
+    if (action === 'getDashboardStats')   return actionGetDashboardStats(params, session);
 
     // ── Admin ────────────────────────────────────────────────
     if (action === 'getAllJurnal')       return actionGetAllJurnal(params, session);
@@ -148,6 +156,14 @@ function setupTriggers() {
     .timeBased()
     .everyDays(1)
     .atHour(3)
+    .create();
+  // [BARU 2026-09-20] Bersihkan log lebih dari 90 hari setiap hari jam 4 pagi
+  // (jam beda dari cleanupExpiredTokens sekadar supaya tidak numpuk di jam
+  // yang sama — tidak wajib, GAS aman menjalankan trigger bersamaan).
+  ScriptApp.newTrigger('cleanupLogLama')
+    .timeBased()
+    .everyDays(1)
+    .atHour(4)
     .create();
   Logger.log('Trigger setup selesai');
 }

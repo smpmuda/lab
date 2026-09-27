@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<!-- Chart.js — dipilih karena ringan, murni client-side (sama alasan seperti jsPDF di app.html), dimuat dari CDN yang sama (cdnjs) supaya konsisten dengan pola loading proyek ini. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<title>Dashboard Kegiatan · Jurnal Mengajar</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #0f1f3d;
+    --navy2: #1a3260;
+    --blue: #2563eb;
+    --blue-l: #eaf1fe;
+    --sky: #eef4ff;
+    --green: #0d8f4f;
+    --green-l: #e9f7ef;
+    --amber: #b76e00;
+    --amber-l: #fdf1e0;
+    --red: #dc2626;
+    --red-l: #fdecec;
+    --purple: #7c3aed;
+    --purple-l: #f2ebfe;
+    --white: #ffffff;
+    --gray-50: #f5f7f6;
+    --gray-100: #eef1ef;
+    --gray-200: #e5e9e6;
+    --gray-300: #c9d1cb;
+    --gray-400: #93a099;
+    --gray-600: #5b655f;
+    --gray-800: #14181a;
+    --radius: 12px;
+    --radius-lg: 20px;
+    --shadow: 0 1px 2px rgba(15,31,61,.05), 0 1px 1px rgba(15,31,61,.03);
+    --shadow-md: 0 10px 28px rgba(15,31,61,.08);
+    --font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  }
+
+  html, body { height: 100%; background: var(--gray-50); }
+  body { font-family: var(--font); color: var(--gray-800); font-size: 15px; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* ── Topbar (pola sama seperti app.html, supaya konsisten) ── */
+  .topbar {
+    background: var(--white); color: var(--gray-800);
+    padding: 14px 18px; display: flex; align-items: center; gap: 12px;
+    position: sticky; top: 0; z-index: 50;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .topbar-logo {
+    width: 36px; height: 36px; background: var(--navy); border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: white; font-size: 13px; flex-shrink: 0;
+  }
+  .topbar-title { flex: 1; }
+  .topbar-name { font-size: 14px; font-weight: 700; color: var(--gray-800); }
+  .topbar-user { font-size: 11px; color: var(--gray-400); margin-top: 1px; }
+  .topbar-btn {
+    background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-600);
+    font-size: 15px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+    border-radius: 11px; flex-shrink: 0;
+    transition: opacity .15s ease, transform .3s ease, background .15s ease, border-color .15s ease;
+  }
+  .topbar-btn:active { transform: scale(.94); }
+  .topbar-btn.spinning i { animation: spin .8s linear infinite; color: var(--blue); }
+  .topbar-btn.spinning { color: var(--blue); border-color: var(--blue-l); background: var(--sky); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Tabs ── */
+  .dtabs {
+    display: flex; gap: 8px; padding: 12px 16px 4px;
+    background: var(--white); border-bottom: 1px solid var(--gray-200);
+  }
+  .dtab {
+    flex: 1; padding: 9px 6px; border-radius: 12px; font-size: 13px; font-weight: 700;
+    border: 1px solid var(--gray-200); background: var(--white); color: var(--gray-600);
+    transition: background .12s ease, border-color .12s ease, color .12s ease, transform .1s ease;
+  }
+  .dtab:active { transform: scale(.97); }
+  .dtab.active { background: var(--navy); border-color: var(--navy); color: white; }
+
+  .container { max-width: 640px; margin: 0 auto; padding: 16px 16px 40px; }
+
+  .dash-cache-info {
+    font-size: 11.5px; color: var(--gray-400); text-align: center; margin: 10px 0 16px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .dash-cache-info i { font-size: 10px; }
+
+  /* ── Stat cards (AdminLTE small-box style) ── */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .stat-card {
+    position: relative; overflow: hidden; border-radius: var(--radius-lg);
+    padding: 16px; color: white; box-shadow: var(--shadow-md);
+    animation: fadeUp .4s ease both;
+  }
+  .stat-card i.bg-icon {
+    position: absolute; right: -6px; bottom: -10px; font-size: 58px; opacity: .18;
+  }
+  .stat-card .stat-label { font-size: 11.5px; font-weight: 700; opacity: .92; text-transform: uppercase; letter-spacing: .02em; }
+  .stat-card .stat-value { font-size: 30px; font-weight: 800; margin-top: 4px; line-height: 1.1; }
+  .stat-card .stat-sub { font-size: 11px; opacity: .85; margin-top: 4px; }
+  .stat-card.c-blue   { background: linear-gradient(135deg, #2563eb 0%, #1a3fb0 100%); }
+  .stat-card.c-green  { background: linear-gradient(135deg, #16a35d 0%, #0d7a44 100%); }
+  .stat-card.c-amber  { background: linear-gradient(135deg, #f5a524 0%, #c97a00 100%); }
+  .stat-card.c-purple { background: linear-gradient(135deg, #8b5cf6 0%, #6528d7 100%); }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── Panels ── */
+  .panel {
+    background: var(--white); border-radius: var(--radius-lg); padding: 16px;
+    box-shadow: var(--shadow); margin-bottom: 14px; animation: fadeUp .45s ease both;
+  }
+  .panel-title {
+    font-size: 13.5px; font-weight: 800; color: var(--gray-800);
+    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  }
+  .panel-title i { color: var(--blue); font-size: 14px; }
+  .panel-sub { font-size: 11px; color: var(--gray-400); text-align: center; margin-top: 8px; }
+
+  .chart-wrap { position: relative; height: 190px; }
+  .chart-wrap.donut-wrap { height: 160px; display: flex; align-items: center; justify-content: center; }
+  .donut-center-label {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; pointer-events: none;
+  }
+  .donut-center-label .big { font-size: 24px; font-weight: 800; color: var(--gray-800); }
+  .donut-center-label .small { font-size: 10.5px; color: var(--gray-400); font-weight: 700; text-transform: uppercase; }
+
+  /* ── Guru belum isi ── */
+  .gb-item { border: 1px solid var(--gray-100); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
+  .gb-item summary {
+    list-style: none; cursor: pointer; padding: 10px 12px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .gb-item summary::-webkit-details-marker { display: none; }
+  .gb-avatar {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--red-l); color: var(--red);
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12.5px; flex-shrink: 0;
+  }
+  .gb-name { flex: 1; font-size: 13px; font-weight: 700; color: var(--gray-800); }
+  .gb-badge {
+    background: var(--red-l); color: var(--red); font-size: 11px; font-weight: 800;
+    padding: 3px 9px; border-radius: 20px; flex-shrink: 0;
+  }
+  .gb-detail { padding: 0 12px 10px 52px; }
+  .gb-detail-row {
+    display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px;
+    color: var(--gray-600); padding: 4px 0; border-top: 1px dashed var(--gray-100);
+  }
+  .gb-detail-jam { color: var(--gray-400); flex-shrink: 0; }
+  .gb-detail-more { font-size: 11px; color: var(--gray-400); padding-top: 4px; font-style: italic; }
+  .dash-empty-mini { text-align: center; padding: 16px 8px; color: var(--green); font-size: 13px; font-weight: 700; }
+  .dash-empty-mini i { margin-right: 6px; }
+
+  /* ── Skeleton / states ── */
+  .skeleton-box { border-radius: var(--radius-lg); background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-50) 37%, var(--gray-100) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
+  @keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+  .skel-stat { height: 92px; }
+  .skel-panel { height: 190px; margin-bottom: 14px; }
+
+  .state-box { text-align: center; padding: 48px 20px; color: var(--gray-400); }
+  .state-box i { font-size: 34px; margin-bottom: 10px; display: block; }
+  .state-box .msg { font-size: 13.5px; font-weight: 600; }
+  .state-box.error-box { color: var(--red); }
+  .state-box .retry-btn {
+    margin-top: 14px; background: var(--navy); color: white; border: none;
+    padding: 9px 18px; border-radius: 11px; font-size: 12.5px; font-weight: 700;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="topbar-btn" onclick="window.location.href='app.html'" title="Kembali ke aplikasi" aria-label="Kembali ke aplikasi"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button>
+  <div class="topbar-logo">M²</div>
+  <div class="topbar-title">
+    <div class="topbar-name">Dashboard Kegiatan</div>
+    <div class="topbar-user" id="hdrUser">Memuat...</div>
+  </div>
+  <button class="topbar-btn" id="btnDashRefresh" title="Muat ulang (lewati cache)" aria-label="Muat ulang"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
+</div>
+
+<div class="dtabs" id="dashTabs"></div>
+
+<div class="container">
+
+  <div class="dash-cache-info" id="dashCacheInfo"></div>
+
+  <!-- SKELETON -->
+  <div id="dashSkeleton" style="display:none">
+    <div class="stat-grid">
+      <div class="skeleton-box skel-stat"></div>
+      <div class="skeleton-box skel-stat"></div>
+      <div class="skeleton-box skel-stat"></div>
+      <div class="skeleton-box skel-stat"></div>
+    </div>
+    <div class="skeleton-box skel-panel"></div>
+    <div class="skeleton-box skel-panel"></div>
+    <div class="skeleton-box skel-panel"></div>
+  </div>
+
+  <!-- EMPTY -->
+  <div id="dashEmpty" class="state-box" style="display:none">
+    <i class="fa-regular fa-calendar-xmark" aria-hidden="true"></i>
+    <div class="msg">Tidak ada jadwal mengajar pada rentang ini.</div>
+  </div>
+
+  <!-- ERROR -->
+  <div id="dashError" class="state-box error-box" style="display:none">
+    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+    <div class="msg" id="dashErrorMsg">Terjadi kesalahan</div>
+    <button class="retry-btn" onclick="document.getElementById('btnDashRefresh').click()">Coba Lagi</button>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="dashContent" style="display:none">
+
+    <div class="stat-grid">
+      <div class="stat-card c-blue">
+        <i class="fa-solid fa-calendar-check bg-icon" aria-hidden="true"></i>
+        <div class="stat-label">Total Sesi Jadwal</div>
+        <div class="stat-value" id="statTotalSesi">0</div>
+      </div>
+      <div class="stat-card c-green">
+        <i class="fa-solid fa-book-bookmark bg-icon" aria-hidden="true"></i>
+        <div class="stat-label">Jurnal Terisi</div>
+        <div class="stat-value" id="statTerisi">0</div>
+        <div class="stat-sub" id="statPersen">0%</div>
+      </div>
+      <div class="stat-card c-amber">
+        <i class="fa-solid fa-user-clock bg-icon" aria-hidden="true"></i>
+        <div class="stat-label">Guru Belum Isi</div>
+        <div class="stat-value" id="statGuruBelum">0</div>
+      </div>
+      <div class="stat-card c-purple">
+        <i class="fa-solid fa-chalkboard-user bg-icon" aria-hidden="true"></i>
+        <div class="stat-label">Guru Dijadwalkan</div>
+        <div class="stat-value" id="statGuruTotal" style="font-size:15px; margin-top:10px;">–</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i> Proporsi Jurnal Terisi</div>
+      <div class="chart-wrap donut-wrap">
+        <canvas id="chartDonut"></canvas>
+        <div class="donut-center-label"><div class="big" id="donutBigNum">0%</div><div class="small">Terisi</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><i class="fa-solid fa-chart-line" aria-hidden="true"></i> Tren Aktivitas</div>
+      <div class="chart-wrap"><canvas id="chartTren"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><i class="fa-solid fa-user-group" aria-hidden="true"></i> Rekap Kehadiran Siswa</div>
+      <div class="chart-wrap" style="height:150px"><canvas id="chartKehadiran"></canvas></div>
+      <div class="panel-sub" id="kehadiranTotal"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><i class="fa-solid fa-bell" aria-hidden="true"></i> Guru Belum Isi Jurnal (<span id="guruBelumCount">0</span>)</div>
+      <div id="guruBelumList"></div>
+    </div>
+
+  </div>
+
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/api.js"></script>
+<script src="js/dashboard-kegiatan.js"></script>
+</body>
+</html>
